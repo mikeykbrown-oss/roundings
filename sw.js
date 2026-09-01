@@ -1,4 +1,4 @@
-const CACHE = 'roundings-v2';
+const CACHE = 'roundings-v3';
 const PRECACHE = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
 
 self.addEventListener('install', e => {

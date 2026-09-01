@@ -69,10 +69,11 @@
   .grow{flex:1;min-width:0}
 
   label.f{display:block;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
-  input[type=text],input[type=number],input[type=time],select{
+  input[type=text],input[type=number],input[type=time],select,textarea{
     width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;
     background:var(--surface2);color:var(--ink);font:inherit;font-size:15px;
   }
+  textarea{resize:vertical;min-height:120px;font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:13px}
   input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 
   button{font:inherit;border:none;border-radius:10px;cursor:pointer;color:var(--ink)}
@@ -240,6 +241,7 @@
         <div class="row" style="margin-top:8px">
           <button class="btn primary" id="addBoatBtn">Add boat</button>
           <button class="btn" id="orcOpenBtn">Import from ORC certificates</button>
+          <button class="btn" id="bulkBtn">Paste CSV</button>
         </div>
         <p class="hint">Mark one boat as <b>your boat</b> — it becomes the big PING button on the race screen.</p>
       </div>
@@ -342,6 +344,26 @@
     <span>
       <button class="btn quiet" id="bCancel">Cancel</button>
       <button class="btn primary" id="bSave">Save</button>
+    </span>
+  </div>
+</dialog>
+
+<!-- Bulk CSV add -->
+<dialog id="bulkDlg">
+  <h3>Add boats from CSV</h3>
+  <div class="dgrid">
+    <div class="full">
+      <label class="f" for="bulkText">One boat per line: name, sail no, rating</label>
+      <textarea id="bulkText" placeholder="Firefly, GBR 4321, 0.982&#10;Wild Thing, IRL 707, 1.015&#10;Sundance, , 0.941"></textarea>
+    </div>
+    <div class="full"><input type="file" id="bulkFile" accept=".csv,.txt,text/csv,text/plain"></div>
+  </div>
+  <p class="hint" id="bulkPreview">Commas, semicolons or tabs all work; the sail number is optional (leave it blank, keep the comma). A header row is ignored. Rating = your handicap figure — ToT factor / TCC, or s/NM for time-on-distance races.</p>
+  <div class="dfoot">
+    <span></span>
+    <span>
+      <button class="btn quiet" id="bulkCancel">Cancel</button>
+      <button class="btn primary" id="bulkAdd" disabled>Add boats</button>
     </span>
   </div>
 </dialog>
@@ -627,6 +649,75 @@ $('#bDelete').addEventListener('click',()=>{
   r.boats=r.boats.filter(x=>x.id!==editBoatId);
   r.roundings=r.roundings.filter(x=>x.boatId!==editBoatId);
   save(); $('#boatDlg').close(); renderSetup();
+});
+
+/* ---- bulk CSV add ---- */
+function parseBulk(text){
+  const delim=text.includes('\t')?'\t':(text.includes(';')?';':',');
+  const lines=text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+  const boats=[]; let noRating=0;
+  const num=s=>{
+    if(s==null) return null;
+    s=s.trim(); if(delim!==','){ if(/^\d+,\d+$/.test(s)) s=s.replace(',','.'); }
+    const v=parseFloat(s); return isFinite(v)?v:null;
+  };
+  const splitLine=line=>{
+    const cols=[]; let cur='',inQ=false;
+    for(let j=0;j<line.length;j++){
+      const ch=line[j];
+      if(ch==='"'){ if(inQ&&line[j+1]==='"'){cur+='"';j++;} else inQ=!inQ; }
+      else if(ch===delim&&!inQ){ cols.push(cur.trim()); cur=''; }
+      else cur+=ch;
+    }
+    cols.push(cur.trim()); return cols;
+  };
+  lines.forEach((line,i)=>{
+    const cols=splitLine(line);
+    const name=cols[0];
+    if(!name) return;
+    // skip an obvious header row
+    if(i===0&&num(cols[cols.length-1])==null&&/name|boat|sail|rating|handicap|tcc|phrf|factor/i.test(line)) return;
+    let sail='',rating=null;
+    if(cols.length===2){ rating=num(cols[1]); if(rating==null) sail=cols[1]; }
+    else if(cols.length>=3){
+      rating=num(cols[cols.length-1]);
+      sail=cols.slice(1,rating==null?cols.length:cols.length-1).join(' ').trim();
+    }
+    if(rating==null) noRating++;
+    boats.push({name,sail,rating});
+  });
+  return {boats,noRating};
+}
+function bulkPreviewMsg(){
+  const t=$('#bulkText').value;
+  if(!t.trim()){ $('#bulkAdd').disabled=true; return; }
+  const {boats,noRating}=parseBulk(t);
+  $('#bulkAdd').disabled=!boats.length;
+  $('#bulkAdd').textContent=boats.length?`Add ${boats.length} boat${boats.length===1?'':'s'}`:'Add boats';
+  $('#bulkPreview').textContent=boats.length
+    ? `${boats.length} boat${boats.length===1?'':'s'} detected`+(noRating?` — ${noRating} without a rating (added anyway, edit later)`:'')+'.'
+    : 'No boats detected yet — one boat per line: name, sail no, rating.';
+}
+$('#bulkBtn').addEventListener('click',()=>{ $('#bulkText').value=''; $('#bulkFile').value=''; bulkPreviewMsg(); $('#bulkDlg').showModal(); });
+$('#bulkText').addEventListener('input',bulkPreviewMsg);
+$('#bulkFile').addEventListener('change',e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const rd=new FileReader();
+  rd.onload=()=>{ let t=rd.result; if(t.charCodeAt(0)===0xFEFF) t=t.slice(1); $('#bulkText').value=t; bulkPreviewMsg(); };
+  rd.readAsText(f);
+});
+$('#bulkCancel').addEventListener('click',()=>$('#bulkDlg').close());
+$('#bulkAdd').addEventListener('click',()=>{
+  const r=race();
+  const {boats}=parseBulk($('#bulkText').value);
+  let added=0,dupes=0;
+  boats.forEach(b=>{
+    if(r.boats.some(x=>x.name.toLowerCase()===b.name.toLowerCase()&&(x.sail||'')===(b.sail||''))){ dupes++; return; }
+    r.boats.push({id:uid(),name:b.name,sail:b.sail,rating:b.rating,own:false});
+    added++;
+  });
+  save(); $('#bulkDlg').close(); renderSetup();
+  toast(added+' boat'+(added===1?'':'s')+' added'+(dupes?' · '+dupes+' duplicate'+(dupes===1?'':'s')+' skipped':''));
 });
 
 /* ---- ORC import ---- */
