@@ -1,0 +1,782 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#EFF2F1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#081420" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Roundings">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<title>Roundings</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+  :root{
+    --bg:#EFF2F1; --surface:#FFFFFF; --surface2:#F7F9F8; --ink:#14283A; --muted:#5C6E7C;
+    --line:#D3DCDF; --chip:#E3E9E9;
+    --accent:#E24E12; --accent-ink:#FFFFFF; --accent-soft:#FBE4D9;
+    --teal:#176E64; --good:#1B7F4D; --bad:#B33A2B; --bad-soft:#F6E2DE;
+    --shadow:0 1px 3px rgba(20,40,58,.10);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#081420; --surface:#0F2231; --surface2:#0C1C2A; --ink:#E6EEF3; --muted:#8CA3B2;
+      --line:#1E3B4F; --chip:#173040;
+      --accent:#FF7A33; --accent-ink:#1A0C04; --accent-soft:#3A2113;
+      --teal:#45B8A8; --good:#37B579; --bad:#E4674F; --bad-soft:#3A1D18;
+      --shadow:0 1px 3px rgba(0,0,0,.4);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#081420; --surface:#0F2231; --surface2:#0C1C2A; --ink:#E6EEF3; --muted:#8CA3B2;
+    --line:#1E3B4F; --chip:#173040;
+    --accent:#FF7A33; --accent-ink:#1A0C04; --accent-soft:#3A2113;
+    --teal:#45B8A8; --good:#37B579; --bad:#E4674F; --bad-soft:#3A1D18;
+    --shadow:0 1px 3px rgba(0,0,0,.4);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:'Saira',system-ui,-apple-system,'Segoe UI',sans-serif;
+    font-size:16px; line-height:1.45;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .mono{font-family:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}
+
+  #app{max-width:520px;margin:0 auto;min-height:100dvh;display:flex;flex-direction:column}
+  header.top{
+    display:flex;align-items:baseline;gap:10px;padding:calc(14px + env(safe-area-inset-top)) 16px 8px;
+  }
+  header.top .brand{font-weight:800;font-size:20px;letter-spacing:.02em}
+  header.top .brand .dot{color:var(--accent)}
+  header.top .racename{font-size:14px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+
+  main{flex:1;padding:0 12px 84px}
+  .view{display:none}
+  .view.active{display:block}
+
+  .eyebrow{font-size:12px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:18px 4px 6px}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:12px;margin-bottom:10px}
+  .card h3{margin:0 0 8px;font-size:15px;font-weight:700}
+  .hint{font-size:13px;color:var(--muted);margin:6px 0 0}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .grow{flex:1;min-width:0}
+
+  label.f{display:block;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
+  input[type=text],input[type=number],input[type=time],select{
+    width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;
+    background:var(--surface2);color:var(--ink);font:inherit;font-size:15px;
+  }
+  input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+
+  button{font:inherit;border:none;border-radius:10px;cursor:pointer;color:var(--ink)}
+  .btn{background:var(--chip);padding:10px 14px;font-weight:600;color:var(--ink);display:inline-block}
+  .btn.primary{background:var(--accent);color:var(--accent-ink)}
+  .btn.quiet{background:none;border:1px solid var(--line);color:var(--muted)}
+  .btn.danger{background:var(--bad-soft);color:var(--bad)}
+  .btn:active{transform:scale(.97)}
+  .btn[disabled]{opacity:.45;cursor:default;transform:none}
+
+  /* ---- Race screen ---- */
+  .clockbar{
+    position:sticky;top:0;z-index:5;background:var(--bg);
+    padding:8px 4px 10px;display:flex;align-items:center;gap:12px;
+  }
+  .clockbar .elapsed{font-size:34px;font-weight:600;letter-spacing:.01em}
+  .clockbar .sub{font-size:12px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase}
+  #startBtn{
+    width:100%;padding:26px 16px;font-size:22px;font-weight:800;letter-spacing:.06em;
+    background:var(--accent);color:var(--accent-ink);border-radius:14px;text-transform:uppercase;
+  }
+  #pingBtn{
+    width:100%;padding:20px 16px;margin:4px 0 12px;border-radius:14px;
+    background:var(--teal);color:#fff;font-size:19px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;
+  }
+  #pingBtn small{display:block;font-size:12px;font-weight:600;letter-spacing:.1em;opacity:.85;margin-top:2px}
+  #pingBtn[disabled]{opacity:.45}
+  .fleetgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .boatbtn{
+    min-height:72px;padding:10px 12px;border-radius:12px;text-align:left;
+    background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow);
+    display:flex;flex-direction:column;justify-content:center;gap:2px;
+  }
+  .boatbtn .bn{font-weight:700;font-size:16px;line-height:1.15;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .boatbtn .bs{font-size:12px;color:var(--muted)}
+  .boatbtn .next{font-size:12px;font-weight:600;color:var(--accent)}
+  .boatbtn.done{opacity:.55}
+  .boatbtn.done .next{color:var(--good)}
+  .racefoot{display:flex;gap:8px;margin-top:12px}
+
+  /* ---- Leaderboard ---- */
+  table.board{width:100%;border-collapse:collapse}
+  table.board th{font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);text-align:left;padding:6px 6px;border-bottom:1px solid var(--line)}
+  table.board td{padding:9px 6px;border-bottom:1px solid var(--line);vertical-align:middle}
+  table.board tr:last-child td{border-bottom:none}
+  td.pos{font-weight:800;width:30px}
+  td.ct,th.ct,td.dt,th.dt{text-align:right;white-space:nowrap}
+  .chipm{display:inline-block;font-size:11px;font-weight:600;letter-spacing:.05em;background:var(--chip);border-radius:99px;padding:2px 8px;color:var(--muted)}
+  .chipm.fin{background:var(--accent-soft);color:var(--accent)}
+  tr.own td{background:var(--surface2)}
+  tr.own td.name::after{content:"YOU";font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--teal);margin-left:6px;vertical-align:2px}
+  .bname{font-weight:600}
+  .bsail{font-size:12px;color:var(--muted)}
+
+  /* ---- Log ---- */
+  .logrow{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line)}
+  .logrow:last-child{border-bottom:none}
+  .logrow .lt{width:86px}
+  .logrow .lw{flex:1;min-width:0}
+  .logrow .lm{font-size:12px;color:var(--muted)}
+  .iconb{background:none;border:none;color:var(--muted);font-size:15px;padding:6px}
+
+  /* ---- Setup lists ---- */
+  .item{display:flex;align-items:center;gap:8px;padding:8px 2px;border-bottom:1px solid var(--line)}
+  .item:last-child{border-bottom:none}
+  .item .nm{font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .item .meta{font-size:12px;color:var(--muted);white-space:nowrap}
+  .ownflag{font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--teal);border:1px solid var(--teal);border-radius:4px;padding:1px 4px}
+
+  .orcresults{max-height:280px;overflow-y:auto;border:1px solid var(--line);border-radius:8px;margin-top:8px}
+  .orcrow{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--line);width:100%;background:var(--surface);text-align:left}
+  .orcrow:last-child{border-bottom:none}
+  .orcrow .grow b{font-size:14px}
+  .orcrow .grow div{font-size:12px;color:var(--muted)}
+  .orcrow .rv{font-size:13px;color:var(--teal);white-space:nowrap}
+
+  /* ---- Tabs ---- */
+  nav.tabs{
+    position:fixed;bottom:0;left:0;right:0;z-index:10;
+    background:var(--surface);border-top:1px solid var(--line);
+    display:flex;justify-content:center;
+    padding-bottom:env(safe-area-inset-bottom,0);
+  }
+  nav.tabs .inner{display:flex;width:100%;max-width:520px}
+  nav.tabs button{
+    flex:1;background:none;padding:10px 0 12px;border-radius:0;
+    font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);
+    border-top:3px solid transparent;
+  }
+  nav.tabs button.active{color:var(--accent);border-top-color:var(--accent)}
+
+  dialog{
+    border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--ink);
+    width:min(92vw,420px);padding:16px;box-shadow:0 12px 40px rgba(0,0,0,.3);
+  }
+  dialog::backdrop{background:rgba(8,20,32,.55)}
+  dialog h3{margin:0 0 12px;font-size:16px}
+  .dgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+  .dgrid .full{grid-column:1/-1}
+  .dfoot{display:flex;justify-content:space-between;gap:8px;margin-top:6px}
+
+  .empty{color:var(--muted);font-size:14px;text-align:center;padding:26px 10px}
+  .toast{
+    position:fixed;left:50%;bottom:76px;transform:translateX(-50%);
+    background:var(--ink);color:var(--bg);padding:8px 16px;border-radius:99px;
+    font-size:14px;font-weight:600;opacity:0;transition:opacity .2s;pointer-events:none;z-index:20;
+    max-width:90vw;text-align:center;
+  }
+  .toast.show{opacity:1}
+  @media (prefers-reduced-motion: reduce){ .btn:active{transform:none} .toast{transition:none} }
+</style>
+
+</head>
+<body>
+<div id="app">
+  <header class="top">
+    <div class="brand">Roundings<span class="dot">.</span></div>
+    <div class="racename" id="hdrRace"></div>
+  </header>
+  <main>
+
+    <!-- ============ SETUP ============ -->
+    <section class="view" id="view-setup">
+      <div class="eyebrow">Race</div>
+      <div class="card">
+        <div class="row" style="margin-bottom:8px">
+          <div class="grow"><label class="f" for="raceSel">Active race</label>
+            <select id="raceSel"></select></div>
+          <button class="btn" id="newRaceBtn" style="align-self:flex-end">New race</button>
+        </div>
+        <div class="row">
+          <div class="grow"><label class="f" for="raceName">Race name</label>
+            <input type="text" id="raceName" placeholder="e.g. Wednesday Series R4"></div>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <div class="grow"><label class="f" for="scoringSel">Handicap scoring</label>
+            <select id="scoringSel">
+              <option value="tot">Time-on-time — corrected = elapsed × factor (ORC ToT, IRC TCC)</option>
+              <option value="tod">Time-on-distance — corrected = elapsed − rating × NM (ORC GPH, PHRF)</option>
+            </select></div>
+        </div>
+        <p class="hint" id="scoringHint"></p>
+        <div class="row" style="margin-top:10px;justify-content:space-between">
+          <label class="row" style="gap:6px;font-size:14px"><input type="checkbox" id="wakeLock"> Keep screen awake</label>
+          <button class="btn danger" id="deleteRaceBtn">Delete race</button>
+        </div>
+      </div>
+
+      <div class="eyebrow">Course marks</div>
+      <div class="card">
+        <div id="marksList"></div>
+        <div class="row" style="margin-top:8px">
+          <input type="text" id="markName" class="grow" placeholder="Mark name (last one = finish)">
+          <input type="number" id="markDist" inputmode="decimal" step="0.1" min="0" placeholder="NM from start" style="width:120px" title="Cumulative distance from start, needed for time-on-distance scoring">
+          <button class="btn" id="addMarkBtn">Add</button>
+        </div>
+        <p class="hint">Marks are rounded in order; the last mark in the list is the finish. Distance (cumulative NM from the start) is only needed for time-on-distance scoring.</p>
+      </div>
+
+      <div class="eyebrow">Competitors</div>
+      <div class="card">
+        <div id="boatsList"></div>
+        <div class="row" style="margin-top:8px">
+          <button class="btn primary" id="addBoatBtn">Add boat</button>
+          <button class="btn" id="orcOpenBtn">Import from ORC certificates</button>
+        </div>
+        <p class="hint">Mark one boat as <b>your boat</b> — it becomes the big PING button on the race screen.</p>
+      </div>
+
+      <div class="eyebrow" id="orcSectionTitle" hidden>ORC import</div>
+      <div class="card" id="orcCard" hidden>
+        <h3>ORC certificate file</h3>
+        <p class="hint" style="margin:0 0 8px">Download your country's current certificate file from ORC (opens in a new tab), then load it here. The file lists every valid certificate with all scoring figures.</p>
+        <div class="row">
+          <select id="orcCountry" class="grow"></select>
+          <a id="orcDlLink" class="btn" style="text-decoration:none" target="_blank" rel="noopener">Get file ↗</a>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <input type="file" id="orcFile" accept=".json,application/json" class="grow">
+        </div>
+        <div class="row" style="margin-top:8px">
+          <div class="grow"><label class="f" for="orcField">Rating figure to use</label>
+            <select id="orcField"></select></div>
+        </div>
+        <input type="text" id="orcSearch" placeholder="Search yacht name, sail no, class…" style="margin-top:8px" hidden>
+        <div class="orcresults" id="orcResults" hidden></div>
+      </div>
+    </section>
+
+    <!-- ============ RACE ============ -->
+    <section class="view" id="view-race">
+      <div class="clockbar">
+        <div>
+          <div class="sub" id="clockSub">Race clock</div>
+          <div class="elapsed mono" id="clockEl">–:––:––</div>
+        </div>
+        <div class="grow"></div>
+        <button class="btn quiet" id="undoBtn">Undo tap</button>
+      </div>
+      <div id="preStart">
+        <button id="startBtn">Start race</button>
+        <p class="hint" style="text-align:center">Tap at the starting signal. You can correct the start time later in the log.</p>
+      </div>
+      <div id="racing" hidden>
+        <button id="pingBtn"></button>
+        <div class="fleetgrid" id="fleetGrid"></div>
+        <div class="racefoot">
+          <button class="btn quiet grow" id="endRaceBtn">End &amp; archive race</button>
+        </div>
+      </div>
+      <div class="empty" id="raceEmpty" hidden>Add competitors in Setup first.</div>
+    </section>
+
+    <!-- ============ BOARD ============ -->
+    <section class="view" id="view-board">
+      <div class="eyebrow" style="margin-top:14px">Corrected-time standings</div>
+      <div class="card" style="padding:4px 8px">
+        <div style="overflow-x:auto">
+          <table class="board" id="boardTable"></table>
+        </div>
+      </div>
+      <p class="hint" id="boardHint"></p>
+    </section>
+
+    <!-- ============ LOG ============ -->
+    <section class="view" id="view-log">
+      <div class="eyebrow" style="margin-top:14px">Times</div>
+      <div class="card">
+        <div class="logrow" id="startLogRow" hidden>
+          <span class="lt mono" id="startLogTime"></span>
+          <span class="lw"><b>Start</b><span class="lm" id="startLogDate"></span></span>
+          <button class="iconb" data-editstart="1" title="Edit start time">✎</button>
+        </div>
+        <div id="logList"></div>
+        <div class="empty" id="logEmpty">No roundings logged yet.</div>
+      </div>
+      <div class="row">
+        <button class="btn" id="copyCsvBtn">Copy results as CSV</button>
+      </div>
+    </section>
+  </main>
+
+  <nav class="tabs"><div class="inner">
+    <button data-tab="setup">Setup</button>
+    <button data-tab="race">Race</button>
+    <button data-tab="board">Board</button>
+    <button data-tab="log">Log</button>
+  </div></nav>
+</div>
+
+<!-- Boat editor -->
+<dialog id="boatDlg">
+  <h3 id="boatDlgTitle">Boat</h3>
+  <div class="dgrid">
+    <div class="full"><label class="f" for="bName">Boat name</label><input type="text" id="bName"></div>
+    <div><label class="f" for="bSail">Sail no.</label><input type="text" id="bSail"></div>
+    <div><label class="f" for="bRating" id="bRatingLbl">Rating</label><input type="number" id="bRating" inputmode="decimal" step="0.0001"></div>
+    <div class="full"><label class="row" style="gap:6px"><input type="checkbox" id="bOwn"> This is my boat</label></div>
+  </div>
+  <div class="dfoot">
+    <button class="btn danger" id="bDelete">Remove</button>
+    <span>
+      <button class="btn quiet" id="bCancel">Cancel</button>
+      <button class="btn primary" id="bSave">Save</button>
+    </span>
+  </div>
+</dialog>
+
+<!-- Time editor -->
+<dialog id="timeDlg">
+  <h3 id="timeDlgTitle">Edit time</h3>
+  <div class="dgrid">
+    <div class="full"><label class="f" for="tInput">Time of day (local, hh:mm:ss)</label>
+      <input type="time" id="tInput" step="1"></div>
+  </div>
+  <div class="dfoot">
+    <button class="btn danger" id="tDelete">Delete entry</button>
+    <span>
+      <button class="btn quiet" id="tCancel">Cancel</button>
+      <button class="btn primary" id="tSave">Save</button>
+    </span>
+  </div>
+</dialog>
+
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+/* ================= state ================= */
+const LS_KEY='roundings.v1';
+const uid=()=>Math.random().toString(36).slice(2,10);
+const ORC_COUNTRIES=[["ORC","International (ORC)"],["AUS","Australia"],["AUT","Austria"],["BRA","Brazil"],["BUL","Bulgaria"],["CAN","Canada"],["CYP","Cyprus"],["DEN","Denmark"],["ESP","Spain"],["EST","Estonia"],["FIN","Finland"],["FRA","France"],["GER","Germany"],["GRE","Greece"],["HUN","Hungary"],["IRL","Ireland"],["ISR","Israel"],["ITA","Italy"],["JPN","Japan"],["KOR","Korea"],["LTU","Lithuania"],["NED","Netherlands"],["NOR","Norway"],["POR","Portugal"],["RSA","South Africa"],["SLO","Slovenia"],["SUI","Switzerland"],["SWE","Sweden"],["UKR","Ukraine"],["USA","United States"],["GBR","Great Britain"],["MU_","Multihulls"],["SY_","Superyachts"]];
+const ORC_FIELDS={
+  tot:[["TMF_Offshore","ToT Offshore (TMF)"],["TMF_Inshore","ToT Inshore (TMF)"],
+       ["TN_Offshore_Low","Triple No. Offshore — Low wind"],["TN_Offshore_Medium","Triple No. Offshore — Medium"],["TN_Offshore_High","Triple No. Offshore — High"],
+       ["TN_Inshore_Low","Triple No. Inshore — Low wind"],["TN_Inshore_Medium","Triple No. Inshore — Medium"],["TN_Inshore_High","Triple No. Inshore — High"]],
+  tod:[["GPH","GPH (general purpose, s/NM)"],
+       ["TND_Offshore_Low","ToD Offshore — Low wind"],["TND_Offshore_Medium","ToD Offshore — Medium"],["TND_Offshore_High","ToD Offshore — High"],
+       ["TND_Inshore_Low","ToD Inshore — Low wind"],["TND_Inshore_Medium","ToD Inshore — Medium"],["TND_Inshore_High","ToD Inshore — High"]]
+};
+
+function newRace(name){
+  return { id:uid(), name:name||'New race', created:Date.now(), scoring:'tot',
+    marks:[{name:'Mark 1',dist:null},{name:'Mark 2',dist:null},{name:'Finish',dist:null}],
+    boats:[], start:null, roundings:[], archived:false, orcField:'TMF_Offshore' };
+}
+let db={races:[],activeId:null};
+function load(){
+  try{ const raw=localStorage.getItem(LS_KEY); if(raw){ db=JSON.parse(raw); } }catch(e){}
+  if(!db.races||!db.races.length){ const r=newRace('My first race'); db={races:[r],activeId:r.id}; }
+  if(!db.races.find(r=>r.id===db.activeId)) db.activeId=db.races[0].id;
+}
+function save(){ try{ localStorage.setItem(LS_KEY,JSON.stringify(db)); }catch(e){} }
+const race=()=>db.races.find(r=>r.id===db.activeId);
+
+/* ================= helpers ================= */
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function fmtDur(ms){
+  if(ms==null||!isFinite(ms)) return '—';
+  const neg=ms<0; ms=Math.abs(ms);
+  const s=Math.round(ms/1000), h=Math.floor(s/3600), m=Math.floor(s%3600/60), ss=s%60;
+  return (neg?'−':'')+h+':'+String(m).padStart(2,'0')+':'+String(ss).padStart(2,'0');
+}
+function fmtClockTime(ts){
+  const d=new Date(ts);
+  return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0');
+}
+let toastT;
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),2200); }
+function markLabel(r,idx){ const m=r.marks[idx]; if(!m) return 'Mark '+(idx+1); return idx===r.marks.length-1?(m.name||'Finish'):m.name; }
+function boatRoundings(r,boatId){ return r.roundings.filter(x=>x.boatId===boatId).sort((a,b)=>a.markIdx-b.markIdx); }
+
+/* corrected elapsed for a boat at a given rounding */
+function correctedAt(r,boat,rd){
+  if(r.start==null) return null;
+  const elapsed=rd.t-r.start;
+  if(r.scoring==='tot') return elapsed*(boat.rating||1);
+  const dist=r.marks[rd.markIdx]?.dist;
+  if(dist==null||!(boat.rating>0)) return {raw:elapsed,noDist:true};
+  return elapsed-(boat.rating*dist*1000);
+}
+
+/* ================= board math ================= */
+function computeBoard(){
+  const r=race(); const finIdx=r.marks.length-1;
+  const rows=r.boats.map(b=>{
+    const rds=boatRoundings(r,b.id);
+    const last=rds[rds.length-1]||null;
+    let corr=null,noDist=false;
+    if(last){ const c=correctedAt(r,b,last); if(c&&typeof c==='object'){corr=c.raw;noDist=true;} else corr=c; }
+    return { boat:b, count:rds.length, last, corr, noDist, finished: last? last.markIdx>=finIdx : false };
+  });
+  rows.sort((a,b)=>{
+    if(a.count!==b.count) return b.count-a.count;
+    if(a.corr==null&&b.corr==null) return a.boat.name.localeCompare(b.boat.name);
+    if(a.corr==null) return 1; if(b.corr==null) return -1;
+    return a.corr-b.corr;
+  });
+  return rows;
+}
+
+/* ================= rendering ================= */
+let activeTab='setup';
+function setTab(t){
+  activeTab=t;
+  document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id==='view-'+t));
+  document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
+  renderAll();
+}
+document.querySelectorAll('nav.tabs button').forEach(b=>b.addEventListener('click',()=>setTab(b.dataset.tab)));
+
+function renderHeader(){ $('#hdrRace').textContent=race().name; }
+
+function renderSetup(){
+  const r=race();
+  const sel=$('#raceSel');
+  sel.innerHTML=db.races.map(x=>`<option value="${x.id}" ${x.id===db.activeId?'selected':''}>${esc(x.name)}${x.archived?' (archived)':''}</option>`).join('');
+  $('#raceName').value=r.name;
+  $('#scoringSel').value=r.scoring;
+  $('#scoringHint').textContent = r.scoring==='tot'
+    ? 'Each boat needs a time multiplier: ORC ToT / Triple Number factor, IRC TCC, or any custom factor. Higher factor = faster boat.'
+    : 'Each boat needs a seconds-per-mile rating (ORC GPH, PHRF). Enter cumulative distance for each mark below — corrected time = elapsed − rating × miles sailed. Lower rating = faster boat.';
+  $('#marksList').innerHTML=r.marks.map((m,i)=>`
+    <div class="item">
+      <span class="nm">${i+1}. ${esc(m.name)} ${i===r.marks.length-1?'<span class="chipm fin">FINISH</span>':''}</span>
+      <span class="meta">${m.dist!=null?m.dist+' NM':''}</span>
+      <button class="iconb" data-mup="${i}" title="Move up">↑</button>
+      <button class="iconb" data-mdel="${i}" title="Remove">✕</button>
+    </div>`).join('')||'<div class="empty">No marks yet.</div>';
+  $('#boatsList').innerHTML=r.boats.map(b=>`
+    <div class="item">
+      <span class="nm">${esc(b.name)} ${b.own?'<span class="ownflag">MY BOAT</span>':''}</span>
+      <span class="meta mono">${esc(b.sail||'')} · ${b.rating!=null?b.rating:'no rating'}</span>
+      <button class="iconb" data-bedit="${b.id}" title="Edit">✎</button>
+    </div>`).join('')||'<div class="empty">No competitors yet — add boats or import ORC certificates.</div>';
+  const fsel=$('#orcField');
+  fsel.innerHTML=ORC_FIELDS[r.scoring].map(([v,l])=>`<option value="${v}" ${v===r.orcField?'selected':''}>${esc(l)}</option>`).join('');
+}
+
+let tick=null;
+function renderRace(){
+  const r=race();
+  const started=r.start!=null;
+  $('#preStart').hidden=started;
+  $('#racing').hidden=!started;
+  $('#raceEmpty').hidden=r.boats.length>0;
+  $('#clockSub').textContent=started?'Elapsed — started '+fmtClockTime(r.start):'Race clock';
+  updateClock();
+  if(started){
+    const own=r.boats.find(b=>b.own);
+    const ping=$('#pingBtn');
+    if(own){
+      const rds=boatRoundings(r,own.id); const next=rds.length;
+      const fin=next>=r.marks.length;
+      ping.disabled=fin;
+      ping.innerHTML=fin?`${esc(own.name)} finished ✓`:`Ping — ${esc(own.name)}<small>next: ${esc(markLabel(r,next))}</small>`;
+      ping.dataset.boat=own.id; ping.hidden=false;
+    } else ping.hidden=true;
+    $('#fleetGrid').innerHTML=r.boats.filter(b=>!b.own).map(b=>{
+      const rds=boatRoundings(r,b.id); const next=rds.length;
+      const fin=next>=r.marks.length;
+      const lastTxt=rds.length?`${esc(markLabel(r,rds[rds.length-1].markIdx))} ${fmtDur(rds[rds.length-1].t-r.start)}`:'';
+      return `<button class="boatbtn ${fin?'done':''}" data-tap="${b.id}" ${fin?'disabled':''}>
+        <span class="bn">${esc(b.name)}</span>
+        <span class="bs">${esc(b.sail||'')}${lastTxt?' · '+lastTxt:''}</span>
+        <span class="next">${fin?'Finished ✓':'→ '+esc(markLabel(r,next))}</span></button>`;
+    }).join('');
+  }
+  if(tick) clearInterval(tick);
+  if(started&&!r.archived) tick=setInterval(()=>{updateClock(); if(activeTab==='board') renderBoard();},1000);
+}
+function updateClock(){
+  const r=race();
+  $('#clockEl').textContent=r.start!=null?fmtDur(Date.now()-r.start):'–:––:––';
+}
+
+function renderBoard(){
+  const r=race();
+  const rows=computeBoard();
+  const anyNoDist=rows.some(x=>x.noDist);
+  if(!r.boats.length){ $('#boardTable').innerHTML=''; $('#boardHint').textContent='Add competitors in Setup.'; return; }
+  let leaderCorr=null,leaderCount=null;
+  const body=rows.map((x,i)=>{
+    if(i===0){leaderCorr=x.corr;leaderCount=x.count;}
+    let delta='';
+    if(i>0&&x.corr!=null&&leaderCorr!=null){
+      delta = x.count===leaderCount ? '+'+fmtDur(x.corr-leaderCorr) : '−'+(leaderCount-x.count)+' mark'+(leaderCount-x.count>1?'s':'');
+    }
+    const mk=x.last? `<span class="chipm ${x.finished?'fin':''}">${x.finished?'FIN':esc(markLabel(r,x.last.markIdx))}</span>`:'<span class="chipm">—</span>';
+    return `<tr class="${x.boat.own?'own':''}">
+      <td class="pos">${x.last?i+1:''}</td>
+      <td class="name"><span class="bname">${esc(x.boat.name)}</span><br><span class="bsail mono">${esc(x.boat.sail||'')}</span></td>
+      <td>${mk}</td>
+      <td class="ct mono">${x.corr!=null?fmtDur(x.corr)+(x.noDist?'*':''):'—'}</td>
+      <td class="dt mono">${delta}</td></tr>`;
+  }).join('');
+  $('#boardTable').innerHTML=`<thead><tr><th></th><th>Boat</th><th>At</th><th class="ct">Corrected</th><th class="dt">Δ leader</th></tr></thead><tbody>${body}</tbody>`;
+  $('#boardHint').textContent =
+    (r.scoring==='tot'?'Corrected = elapsed × factor, at each boat’s latest mark. ':'Corrected = elapsed − rating × cumulative NM. ')+
+    'Boats are ranked by marks completed, then corrected time.'+(anyNoDist?' *No distance set for that mark — showing raw elapsed.':'');
+}
+
+function renderLog(){
+  const r=race();
+  const has=r.start!=null;
+  $('#startLogRow').hidden=!has;
+  if(has){ $('#startLogTime').textContent=fmtClockTime(r.start); $('#startLogDate').textContent=' · '+new Date(r.start).toLocaleDateString(); }
+  const items=[...r.roundings].sort((a,b)=>a.t-b.t);
+  $('#logEmpty').hidden=items.length>0;
+  $('#logList').innerHTML=items.map(x=>{
+    const b=r.boats.find(bb=>bb.id===x.boatId);
+    return `<div class="logrow">
+      <span class="lt mono">${fmtClockTime(x.t)}</span>
+      <span class="lw"><b>${esc(b?b.name:'?')}</b><span class="lm"> — ${esc(markLabel(r,x.markIdx))} · +${fmtDur(x.t-r.start)}</span></span>
+      <button class="iconb" data-tedit="${x.id}" title="Edit">✎</button></div>`;
+  }).join('');
+}
+
+function renderAll(){ renderHeader(); if(activeTab==='setup')renderSetup(); if(activeTab==='race')renderRace(); if(activeTab==='board')renderBoard(); if(activeTab==='log')renderLog(); }
+
+/* ================= setup events ================= */
+$('#raceSel').addEventListener('change',e=>{ db.activeId=e.target.value; save(); renderAll(); });
+$('#newRaceBtn').addEventListener('click',()=>{
+  const r=newRace('Race '+(db.races.length+1));
+  const cur=race();
+  if(cur&&cur.boats.length&&confirm('Copy competitors and course from "'+cur.name+'"?')){
+    r.boats=cur.boats.map(b=>({...b})); r.marks=cur.marks.map(m=>({...m})); r.scoring=cur.scoring; r.orcField=cur.orcField;
+  }
+  db.races.push(r); db.activeId=r.id; save(); renderAll();
+});
+$('#deleteRaceBtn').addEventListener('click',()=>{
+  if(!confirm('Delete race "'+race().name+'" and all its times?')) return;
+  db.races=db.races.filter(x=>x.id!==db.activeId);
+  if(!db.races.length) db.races.push(newRace('New race'));
+  db.activeId=db.races[0].id; save(); renderAll();
+});
+$('#raceName').addEventListener('change',e=>{ race().name=e.target.value.trim()||'Race'; save(); renderHeader(); renderSetup(); });
+$('#scoringSel').addEventListener('change',e=>{
+  const r=race(); r.scoring=e.target.value;
+  r.orcField=ORC_FIELDS[r.scoring][0][0];
+  save(); renderSetup();
+});
+$('#addMarkBtn').addEventListener('click',()=>{
+  const n=$('#markName').value.trim(); if(!n){toast('Name the mark first');return;}
+  const d=$('#markDist').value; race().marks.push({name:n,dist:d===''?null:parseFloat(d)});
+  $('#markName').value='';$('#markDist').value=''; save(); renderSetup();
+});
+$('#marksList').addEventListener('click',e=>{
+  const r=race();
+  const up=e.target.closest('[data-mup]'), del=e.target.closest('[data-mdel]');
+  if(up){ const i=+up.dataset.mup; if(i>0){[r.marks[i-1],r.marks[i]]=[r.marks[i],r.marks[i-1]]; save(); renderSetup();} }
+  if(del){ const i=+del.dataset.mdel;
+    if(r.roundings.some(x=>x.markIdx>=r.marks.length-1)){ toast('Boats already logged at later marks'); }
+    r.marks.splice(i,1); r.roundings=r.roundings.filter(x=>x.markIdx<r.marks.length); save(); renderSetup(); }
+});
+
+/* ---- boat dialog ---- */
+let editBoatId=null;
+function openBoatDlg(id){
+  const r=race(); editBoatId=id;
+  const b=id?r.boats.find(x=>x.id===id):null;
+  $('#boatDlgTitle').textContent=b?'Edit boat':'Add boat';
+  $('#bName').value=b?b.name:''; $('#bSail').value=b?b.sail||'':'';
+  $('#bRating').value=b&&b.rating!=null?b.rating:'';
+  $('#bRatingLbl').textContent=r.scoring==='tot'?'Factor (ToT / TCC)':'Rating (s/NM)';
+  $('#bRating').step=r.scoring==='tot'?'0.0001':'0.1';
+  $('#bOwn').checked=b?!!b.own:false;
+  $('#bDelete').hidden=!b;
+  $('#boatDlg').showModal();
+}
+$('#addBoatBtn').addEventListener('click',()=>openBoatDlg(null));
+$('#boatsList').addEventListener('click',e=>{ const t=e.target.closest('[data-bedit]'); if(t) openBoatDlg(t.dataset.bedit); });
+$('#bCancel').addEventListener('click',()=>$('#boatDlg').close());
+$('#bSave').addEventListener('click',()=>{
+  const r=race(); const name=$('#bName').value.trim(); if(!name){toast('Boat needs a name');return;}
+  const rating=parseFloat($('#bRating').value);
+  const data={name,sail:$('#bSail').value.trim(),rating:isFinite(rating)?rating:null,own:$('#bOwn').checked};
+  if(data.own) r.boats.forEach(b=>b.own=false);
+  if(editBoatId){ Object.assign(r.boats.find(x=>x.id===editBoatId),data); }
+  else r.boats.push({id:uid(),...data});
+  save(); $('#boatDlg').close(); renderSetup();
+});
+$('#bDelete').addEventListener('click',()=>{
+  const r=race();
+  if(!confirm('Remove this boat and its logged times?')) return;
+  r.boats=r.boats.filter(x=>x.id!==editBoatId);
+  r.roundings=r.roundings.filter(x=>x.boatId!==editBoatId);
+  save(); $('#boatDlg').close(); renderSetup();
+});
+
+/* ---- ORC import ---- */
+let orcData=null;
+const cSel=$('#orcCountry');
+cSel.innerHTML=ORC_COUNTRIES.map(([id,n])=>`<option value="${id}" ${id==='GBR'?'selected':''}>${esc(n)}</option>`).join('');
+function updOrcLink(){ $('#orcDlLink').href='https://data.orc.org/public/WPub.dll?action=DownRMS&ext=json&Family=ORC&CountryId='+cSel.value; }
+cSel.addEventListener('change',updOrcLink); updOrcLink();
+$('#orcOpenBtn').addEventListener('click',()=>{
+  const c=$('#orcCard'); c.hidden=false; $('#orcSectionTitle').hidden=false; c.scrollIntoView({behavior:'smooth'});
+});
+$('#orcField').addEventListener('change',e=>{ race().orcField=e.target.value; save(); renderOrcResults(); });
+$('#orcFile').addEventListener('change',e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const rd=new FileReader();
+  rd.onload=()=>{
+    try{
+      let txt=rd.result; if(txt.charCodeAt(0)===0xFEFF) txt=txt.slice(1);
+      const d=JSON.parse(txt);
+      orcData=Array.isArray(d)?d:(d.rms||[]);
+      if(!orcData.length) throw new Error('empty');
+      $('#orcSearch').hidden=false; $('#orcResults').hidden=false;
+      toast(orcData.length+' certificates loaded');
+      renderOrcResults();
+    }catch(err){ toast('Could not read that file — expected the ORC RMS .json download'); }
+  };
+  rd.readAsText(f);
+});
+$('#orcSearch').addEventListener('input',renderOrcResults);
+function renderOrcResults(){
+  if(!orcData) return;
+  const q=$('#orcSearch').value.trim().toLowerCase();
+  const field=race().orcField;
+  const hits=orcData.filter(c=>!q||[c.YachtName,c.SailNo,c.Class].some(v=>v&&String(v).toLowerCase().includes(q))).slice(0,60);
+  $('#orcResults').innerHTML=hits.map((c,i)=>`
+    <button class="orcrow" data-orc="${i}">
+      <span class="grow"><b>${esc(c.YachtName||'?')}</b><div>${esc(c.SailNo||'')} · ${esc(c.Class||'')}</div></span>
+      <span class="rv mono">${c[field]!=null?c[field]:'n/a'}</span>
+    </button>`).join('')||'<div class="empty">No matches.</div>';
+  $('#orcResults').dataset.hits=JSON.stringify(hits.map(c=>({n:c.YachtName,s:c.SailNo,v:c[field]})));
+}
+$('#orcResults').addEventListener('click',e=>{
+  const t=e.target.closest('[data-orc]'); if(!t) return;
+  const hits=JSON.parse($('#orcResults').dataset.hits||'[]');
+  const h=hits[+t.dataset.orc]; if(!h) return;
+  if(h.v==null){ toast('That certificate has no value for the chosen figure'); return; }
+  const r=race();
+  if(r.boats.some(b=>b.name===h.n&&b.sail===h.s)){ toast(h.n+' is already in the fleet'); return; }
+  r.boats.push({id:uid(),name:h.n,sail:h.s||'',rating:h.v,own:false});
+  save(); renderSetup(); toast(h.n+' added');
+});
+
+/* ================= race events ================= */
+$('#startBtn').addEventListener('click',()=>{
+  const r=race();
+  if(!r.boats.length){ toast('Add competitors in Setup first'); setTab('setup'); return; }
+  r.start=Date.now(); save(); renderRace();
+  if($('#wakeLock').checked) requestWake();
+});
+function recordTap(boatId){
+  const r=race(); if(r.start==null) return;
+  const rds=boatRoundings(r,boatId);
+  if(rds.length>=r.marks.length) return;
+  const lastT=rds.length?rds[rds.length-1].t:0;
+  const now=Date.now();
+  if(now-lastT<5000&&rds.length){ toast('Double-tap ignored (within 5 s) — use Undo if the last tap was wrong'); return; }
+  r.roundings.push({id:uid(),boatId,markIdx:rds.length,t:now});
+  save();
+  const b=r.boats.find(x=>x.id===boatId);
+  if(navigator.vibrate) try{navigator.vibrate(30);}catch(e){}
+  toast(b.name+' — '+markLabel(r,rds.length)+' @ '+fmtDur(now-r.start));
+  renderRace();
+}
+$('#fleetGrid').addEventListener('click',e=>{ const t=e.target.closest('[data-tap]'); if(t) recordTap(t.dataset.tap); });
+$('#pingBtn').addEventListener('click',e=>{ const id=e.currentTarget.dataset.boat; if(id) recordTap(id); });
+$('#undoBtn').addEventListener('click',()=>{
+  const r=race();
+  if(!r.roundings.length){ toast('Nothing to undo'); return; }
+  let li=0; for(let i=1;i<r.roundings.length;i++) if(r.roundings[i].t>r.roundings[li].t) li=i;
+  const [rm]=r.roundings.splice(li,1);
+  const b=r.boats.find(x=>x.id===rm.boatId);
+  save(); toast('Undid '+(b?b.name:'?')+' at '+markLabel(r,rm.markIdx)); renderRace();
+});
+$('#endRaceBtn').addEventListener('click',()=>{
+  if(!confirm('End this race? It stays in the race list as archived — times are kept.')) return;
+  race().archived=true; save(); setTab('board');
+});
+
+/* ---- wake lock ---- */
+let wl=null;
+async function requestWake(){ try{ wl=await navigator.wakeLock.request('screen'); }catch(e){} }
+$('#wakeLock').addEventListener('change',e=>{ if(e.target.checked) requestWake(); else if(wl){ wl.release(); wl=null; } });
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'&&$('#wakeLock').checked) requestWake(); });
+
+/* ================= log events ================= */
+let editTimeId=null; // rounding id, or '__start'
+function openTimeDlg(id){
+  const r=race(); editTimeId=id;
+  const ts=id==='__start'?r.start:r.roundings.find(x=>x.id===id)?.t;
+  if(ts==null) return;
+  $('#timeDlgTitle').textContent=id==='__start'?'Edit start time':'Edit rounding time';
+  const d=new Date(ts);
+  $('#tInput').value=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0');
+  $('#tDelete').hidden=id==='__start';
+  $('#timeDlg').showModal();
+}
+document.querySelector('[data-editstart]').addEventListener('click',()=>openTimeDlg('__start'));
+$('#logList').addEventListener('click',e=>{ const t=e.target.closest('[data-tedit]'); if(t) openTimeDlg(t.dataset.tedit); });
+$('#tCancel').addEventListener('click',()=>$('#timeDlg').close());
+$('#tSave').addEventListener('click',()=>{
+  const r=race(); const v=$('#tInput').value; if(!v) return;
+  const parts=v.split(':').map(Number);
+  const base=new Date(editTimeId==='__start'?r.start:r.roundings.find(x=>x.id===editTimeId).t);
+  base.setHours(parts[0],parts[1],parts[2]||0,0);
+  if(editTimeId==='__start') r.start=base.getTime();
+  else r.roundings.find(x=>x.id===editTimeId).t=base.getTime();
+  save(); $('#timeDlg').close(); renderLog();
+});
+$('#tDelete').addEventListener('click',()=>{
+  const r=race();
+  const rd=r.roundings.find(x=>x.id===editTimeId); if(!rd) return;
+  // re-index later roundings of the same boat down one mark
+  r.roundings=r.roundings.filter(x=>x.id!==editTimeId);
+  r.roundings.filter(x=>x.boatId===rd.boatId&&x.markIdx>rd.markIdx).forEach(x=>x.markIdx--);
+  save(); $('#timeDlg').close(); renderLog();
+});
+
+/* ---- CSV export ---- */
+$('#copyCsvBtn').addEventListener('click',async()=>{
+  const r=race(); const rows=computeBoard();
+  const lines=[['Pos','Boat','Sail','Rating','Marks completed','Last mark','Elapsed','Corrected'].join(',')];
+  rows.forEach((x,i)=>{
+    lines.push([x.last?i+1:'',csv(x.boat.name),csv(x.boat.sail),x.boat.rating??'',x.count,
+      x.last?csv(markLabel(r,x.last.markIdx)):'', x.last?fmtDur(x.last.t-r.start):'', x.corr!=null?fmtDur(x.corr):''].join(','));
+  });
+  lines.push('');
+  lines.push('Boat,Mark,Time of day,Elapsed');
+  [...r.roundings].sort((a,b)=>a.t-b.t).forEach(x=>{
+    const b=r.boats.find(bb=>bb.id===x.boatId);
+    lines.push([csv(b?.name),csv(markLabel(r,x.markIdx)),fmtClockTime(x.t),fmtDur(x.t-r.start)].join(','));
+  });
+  try{ await navigator.clipboard.writeText(lines.join('\n')); toast('Results copied to clipboard'); }
+  catch(e){ toast('Clipboard blocked — long-press to copy from the log instead'); }
+});
+function csv(s){ s=String(s??''); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }
+
+/* ================= boot ================= */
+load(); save();
+setTab(race().start!=null&&!race().archived?'race':'setup');
+</script>
+
+<script>
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+}
+</script>
+</body>
+</html>

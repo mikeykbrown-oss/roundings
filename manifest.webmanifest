@@ -1,0 +1,16 @@
+{
+  "name": "Roundings",
+  "short_name": "Roundings",
+  "description": "Tap mark roundings, get a live corrected-time leaderboard from ORC or manual handicaps.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#081420",
+  "theme_color": "#081420",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
