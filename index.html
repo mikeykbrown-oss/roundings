@@ -142,12 +142,14 @@
   .item .meta{font-size:12px;color:var(--muted);white-space:nowrap}
   .ownflag{font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--teal);border:1px solid var(--teal);border-radius:4px;padding:1px 4px}
 
-  .orcresults{max-height:280px;overflow-y:auto;border:1px solid var(--line);border-radius:8px;margin-top:8px}
-  .orcrow{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--line);width:100%;background:var(--surface);text-align:left}
+  .orcresults{max-height:300px;overflow-y:auto;border:1px solid var(--line);border-radius:8px;margin-top:8px}
+  .orcrow{display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--line);width:100%;background:var(--surface);text-align:left;cursor:pointer}
   .orcrow:last-child{border-bottom:none}
+  .orcrow input[type=checkbox]{width:20px;height:20px;flex:none;accent-color:var(--accent)}
   .orcrow .grow b{font-size:14px}
   .orcrow .grow div{font-size:12px;color:var(--muted)}
   .orcrow .rv{font-size:13px;color:var(--teal);white-space:nowrap}
+  .orcrow.infleet{opacity:.5}
 
   /* ---- Tabs ---- */
   nav.tabs{
@@ -244,14 +246,10 @@
 
       <div class="eyebrow" id="orcSectionTitle" hidden>ORC import</div>
       <div class="card" id="orcCard" hidden>
-        <h3>ORC certificate file</h3>
-        <p class="hint" style="margin:0 0 8px">Download your country's current certificate file from ORC (opens in a new tab), then load it here. The file lists every valid certificate with all scoring figures.</p>
+        <h3>ORC certificates</h3>
         <div class="row">
           <select id="orcCountry" class="grow"></select>
-          <a id="orcDlLink" class="btn" style="text-decoration:none" target="_blank" rel="noopener">Get file ↗</a>
-        </div>
-        <div class="row" style="margin-top:8px">
-          <input type="file" id="orcFile" accept=".json,application/json" class="grow">
+          <button class="btn primary" id="orcLoadBtn">Load boats</button>
         </div>
         <div class="row" style="margin-top:8px">
           <div class="grow"><label class="f" for="orcField">Rating figure to use</label>
@@ -259,6 +257,13 @@
         </div>
         <input type="text" id="orcSearch" placeholder="Search yacht name, sail no, class…" style="margin-top:8px" hidden>
         <div class="orcresults" id="orcResults" hidden></div>
+        <div class="row" style="margin-top:8px;justify-content:space-between" id="orcAddRow" hidden>
+          <span class="hint" style="margin:0" id="orcMeta"></span>
+          <button class="btn primary" id="orcAddBtn" disabled>Add selected</button>
+        </div>
+        <details style="margin-top:8px"><summary class="hint" style="cursor:pointer;display:list-item">Load from a downloaded ORC .json file instead</summary>
+          <input type="file" id="orcFile" accept=".json,application/json" style="margin-top:6px">
+        </details>
       </div>
     </section>
 
@@ -574,7 +579,7 @@ $('#raceName').addEventListener('change',e=>{ race().name=e.target.value.trim()|
 $('#scoringSel').addEventListener('change',e=>{
   const r=race(); r.scoring=e.target.value;
   r.orcField=ORC_FIELDS[r.scoring][0][0];
-  save(); renderSetup();
+  save(); renderSetup(); renderOrcResults();
 });
 $('#addMarkBtn').addEventListener('click',()=>{
   const n=$('#markName').value.trim(); if(!n){toast('Name the mark first');return;}
@@ -625,13 +630,39 @@ $('#bDelete').addEventListener('click',()=>{
 });
 
 /* ---- ORC import ---- */
-let orcData=null;
+let orcData=null;              // certificates for the loaded country/file
+let orcHits=[];                // currently displayed (filtered) certs
+const orcSel=new Map();        // certKey -> cert, ticked in the checklist
+const certKey=c=>(c.CertNo||'')+'|'+(c.YachtName||'')+'|'+(c.SailNo||'');
+const inFleet=c=>race().boats.some(b=>b.name===c.YachtName&&b.sail===(c.SailNo||''));
 const cSel=$('#orcCountry');
-cSel.innerHTML=ORC_COUNTRIES.map(([id,n])=>`<option value="${id}" ${id==='GBR'?'selected':''}>${esc(n)}</option>`).join('');
-function updOrcLink(){ $('#orcDlLink').href='https://data.orc.org/public/WPub.dll?action=DownRMS&ext=json&Family=ORC&CountryId='+cSel.value; }
-cSel.addEventListener('change',updOrcLink); updOrcLink();
+function fillCountries(list){
+  cSel.innerHTML=list.map(c=>`<option value="${c.id}" ${c.id==='GBR'?'selected':''}>${esc(c.name)}${c.count?` (${c.count})`:''}</option>`).join('');
+}
+fillCountries(ORC_COUNTRIES.map(([id,name])=>({id,name})));
+let orcUpdated='';
+fetch('data/orc/index.json').then(r=>r.ok?r.json():null).then(d=>{
+  if(!d) return;
+  orcUpdated=d.updated||'';
+  fillCountries(d.countries.filter(c=>c.count>0));
+}).catch(()=>{});
 $('#orcOpenBtn').addEventListener('click',()=>{
   const c=$('#orcCard'); c.hidden=false; $('#orcSectionTitle').hidden=false; c.scrollIntoView({behavior:'smooth'});
+});
+$('#orcLoadBtn').addEventListener('click',async()=>{
+  const btn=$('#orcLoadBtn'); btn.disabled=true; btn.textContent='Loading…';
+  try{
+    const r=await fetch('data/orc/'+cSel.value+'.json');
+    if(!r.ok) throw new Error(r.status);
+    const d=await r.json();
+    orcData=d.boats||[]; orcSel.clear();
+    if(!orcData.length) throw new Error('empty');
+    $('#orcSearch').hidden=false; $('#orcResults').hidden=false; $('#orcAddRow').hidden=false;
+    $('#orcSearch').value='';
+    toast(orcData.length+' certificates loaded'+(d.updated?' · data of '+d.updated:''));
+    renderOrcResults();
+  }catch(e){ toast('Could not load — internet is needed the first time for each country'); }
+  finally{ btn.disabled=false; btn.textContent='Load boats'; }
 });
 $('#orcField').addEventListener('change',e=>{ race().orcField=e.target.value; save(); renderOrcResults(); });
 $('#orcFile').addEventListener('change',e=>{
@@ -641,10 +672,11 @@ $('#orcFile').addEventListener('change',e=>{
     try{
       let txt=rd.result; if(txt.charCodeAt(0)===0xFEFF) txt=txt.slice(1);
       const d=JSON.parse(txt);
-      orcData=Array.isArray(d)?d:(d.rms||[]);
+      orcData=Array.isArray(d)?d:(d.rms||d.boats||[]);
       if(!orcData.length) throw new Error('empty');
-      $('#orcSearch').hidden=false; $('#orcResults').hidden=false;
-      toast(orcData.length+' certificates loaded');
+      orcSel.clear();
+      $('#orcSearch').hidden=false; $('#orcResults').hidden=false; $('#orcAddRow').hidden=false;
+      toast(orcData.length+' certificates loaded from file');
       renderOrcResults();
     }catch(err){ toast('Could not read that file — expected the ORC RMS .json download'); }
   };
@@ -655,23 +687,40 @@ function renderOrcResults(){
   if(!orcData) return;
   const q=$('#orcSearch').value.trim().toLowerCase();
   const field=race().orcField;
-  const hits=orcData.filter(c=>!q||[c.YachtName,c.SailNo,c.Class].some(v=>v&&String(v).toLowerCase().includes(q))).slice(0,60);
-  $('#orcResults').innerHTML=hits.map((c,i)=>`
-    <button class="orcrow" data-orc="${i}">
-      <span class="grow"><b>${esc(c.YachtName||'?')}</b><div>${esc(c.SailNo||'')} · ${esc(c.Class||'')}</div></span>
+  orcHits=orcData.filter(c=>!q||[c.YachtName,c.SailNo,c.Class].some(v=>v&&String(v).toLowerCase().includes(q))).slice(0,100);
+  $('#orcResults').innerHTML=orcHits.map((c,i)=>{
+    const k=certKey(c), dup=inFleet(c);
+    return `<label class="orcrow ${dup?'infleet':''}">
+      <input type="checkbox" data-orc="${i}" ${orcSel.has(k)?'checked':''} ${dup?'disabled':''}>
+      <span class="grow"><b>${esc(c.YachtName||'?')}</b><div>${esc(c.SailNo||'')} · ${esc(c.Class||'')}${dup?' · already in fleet':''}</div></span>
       <span class="rv mono">${c[field]!=null?c[field]:'n/a'}</span>
-    </button>`).join('')||'<div class="empty">No matches.</div>';
-  $('#orcResults').dataset.hits=JSON.stringify(hits.map(c=>({n:c.YachtName,s:c.SailNo,v:c[field]})));
+    </label>`;
+  }).join('')||'<div class="empty">No matches.</div>';
+  updOrcMeta();
 }
-$('#orcResults').addEventListener('click',e=>{
+function updOrcMeta(){
+  const n=orcSel.size;
+  $('#orcAddBtn').disabled=!n;
+  $('#orcAddBtn').textContent=n?`Add selected (${n})`:'Add selected';
+  $('#orcMeta').textContent=(orcData?orcData.length+' certs':'')+(orcUpdated?' · updated '+orcUpdated:'');
+}
+$('#orcResults').addEventListener('change',e=>{
   const t=e.target.closest('[data-orc]'); if(!t) return;
-  const hits=JSON.parse($('#orcResults').dataset.hits||'[]');
-  const h=hits[+t.dataset.orc]; if(!h) return;
-  if(h.v==null){ toast('That certificate has no value for the chosen figure'); return; }
-  const r=race();
-  if(r.boats.some(b=>b.name===h.n&&b.sail===h.s)){ toast(h.n+' is already in the fleet'); return; }
-  r.boats.push({id:uid(),name:h.n,sail:h.s||'',rating:h.v,own:false});
-  save(); renderSetup(); toast(h.n+' added');
+  const c=orcHits[+t.dataset.orc]; if(!c) return;
+  if(t.checked) orcSel.set(certKey(c),c); else orcSel.delete(certKey(c));
+  updOrcMeta();
+});
+$('#orcAddBtn').addEventListener('click',()=>{
+  const r=race(); const field=r.orcField;
+  let added=0,noval=0;
+  orcSel.forEach(c=>{
+    if(inFleet(c)) return;
+    if(c[field]==null){ noval++; return; }
+    r.boats.push({id:uid(),name:c.YachtName,sail:c.SailNo||'',rating:c[field],own:false});
+    added++;
+  });
+  orcSel.clear(); save(); renderSetup(); renderOrcResults();
+  toast(added+' boat'+(added===1?'':'s')+' added'+(noval?' · '+noval+' skipped (no value for that figure)':''));
 });
 
 /* ================= race events ================= */

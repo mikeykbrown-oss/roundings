@@ -1,4 +1,4 @@
-const CACHE = 'roundings-v1';
+const CACHE = 'roundings-v2';
 const PRECACHE = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
@@ -18,6 +18,20 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
+  // ORC certificate data: network-first so weekly refreshes arrive,
+  // falling back to the cached copy offline.
+  if (url.origin === location.origin && url.pathname.includes('/data/orc/')) {
+    e.respondWith(
+      fetch(e.request).then(res => {
+        if (res && res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then(c => c.put(e.request, copy));
+        }
+        return res;
+      }).catch(() => caches.match(e.request))
+    );
+    return;
+  }
   e.respondWith(
     caches.match(e.request).then(hit => {
       if (hit) return hit;
