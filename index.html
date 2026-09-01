@@ -112,7 +112,12 @@
   .boatbtn .next{font-size:12px;font-weight:600;color:var(--accent)}
   .boatbtn.done{opacity:.55}
   .boatbtn.done .next{color:var(--good)}
+  .boatbtn.skipping{border:1px dashed var(--accent);background:var(--accent-soft)}
   .racefoot{display:flex;gap:8px;margin-top:12px}
+  #skipBtn.armed{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+  #skipBanner{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--accent-soft);
+    border:1px dashed var(--accent);border-radius:12px;padding:10px 12px;margin-bottom:10px;font-size:13px}
+  .skiptag{font-size:12px;color:var(--muted);font-style:italic}
 
   /* ---- Leaderboard ---- */
   table.board{width:100%;border-collapse:collapse}
@@ -277,6 +282,7 @@
           <div class="elapsed mono" id="clockEl">–:––:––</div>
         </div>
         <div class="grow"></div>
+        <button class="btn quiet" id="skipBtn">Skip</button>
         <button class="btn quiet" id="undoBtn">Undo tap</button>
       </div>
       <div id="preStart">
@@ -284,6 +290,11 @@
         <p class="hint" style="text-align:center">Tap at the starting signal. You can correct the start time later in the log.</p>
       </div>
       <div id="racing" hidden>
+        <div id="skipBanner" hidden>
+          <span class="grow">Skip mode — tapping a boat moves it past its next mark <b>without a time</b>. Use it when a rounding wasn't recorded.</span>
+          <button class="btn" id="skipAllBtn">Skip all</button>
+          <button class="btn primary" id="skipDoneBtn">Done</button>
+        </div>
         <button id="pingBtn"></button>
         <div class="fleetgrid" id="fleetGrid"></div>
         <div class="racefoot">
@@ -449,9 +460,10 @@ function computeBoard(){
   const rows=r.boats.map(b=>{
     const rds=boatRoundings(r,b.id);
     const last=rds[rds.length-1]||null;
+    const timed=[...rds].reverse().find(x=>!x.skipped)||null;
     let corr=null,noDist=false;
-    if(last){ const c=correctedAt(r,b,last); if(c&&typeof c==='object'){corr=c.raw;noDist=true;} else corr=c; }
-    return { boat:b, count:rds.length, last, corr, noDist, finished: last? last.markIdx>=finIdx : false };
+    if(timed){ const c=correctedAt(r,b,timed); if(c&&typeof c==='object'){corr=c.raw;noDist=true;} else corr=c; }
+    return { boat:b, count:rds.length, last, timed, corr, noDist, finished: last? last.markIdx>=finIdx : false };
   });
   rows.sort((a,b)=>{
     if(a.count!==b.count) return b.count-a.count;
@@ -466,6 +478,7 @@ function computeBoard(){
 let activeTab='setup';
 function setTab(t){
   activeTab=t;
+  if(t!=='race') skipMode=false;
   document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id==='view-'+t));
   document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   renderAll();
@@ -510,23 +523,28 @@ function renderRace(){
   $('#clockSub').textContent=started?'Elapsed — started '+fmtClockTime(r.start):'Race clock';
   updateClock();
   if(started){
+    $('#skipBanner').hidden=!skipMode;
+    $('#skipBtn').classList.toggle('armed',skipMode);
     const own=r.boats.find(b=>b.own);
     const ping=$('#pingBtn');
     if(own){
       const rds=boatRoundings(r,own.id); const next=rds.length;
       const fin=next>=r.marks.length;
       ping.disabled=fin;
-      ping.innerHTML=fin?`${esc(own.name)} finished ✓`:`Ping — ${esc(own.name)}<small>next: ${esc(markLabel(r,next))}</small>`;
+      ping.innerHTML=fin?`${esc(own.name)} finished ✓`
+        :skipMode?`Skip ${esc(markLabel(r,next))} — ${esc(own.name)}`
+        :`Ping — ${esc(own.name)}<small>next: ${esc(markLabel(r,next))}</small>`;
       ping.dataset.boat=own.id; ping.hidden=false;
     } else ping.hidden=true;
     $('#fleetGrid').innerHTML=r.boats.filter(b=>!b.own).map(b=>{
       const rds=boatRoundings(r,b.id); const next=rds.length;
       const fin=next>=r.marks.length;
-      const lastTxt=rds.length?`${esc(markLabel(r,rds[rds.length-1].markIdx))} ${fmtDur(rds[rds.length-1].t-r.start)}`:'';
-      return `<button class="boatbtn ${fin?'done':''}" data-tap="${b.id}" ${fin?'disabled':''}>
+      const last=rds[rds.length-1];
+      const lastTxt=last?`${esc(markLabel(r,last.markIdx))} ${last.skipped?'skipped':fmtDur(last.t-r.start)}`:'';
+      return `<button class="boatbtn ${fin?'done':''} ${skipMode&&!fin?'skipping':''}" data-tap="${b.id}" ${fin?'disabled':''}>
         <span class="bn">${esc(b.name)}</span>
         <span class="bs">${esc(b.sail||'')}${lastTxt?' · '+lastTxt:''}</span>
-        <span class="next">${fin?'Finished ✓':'→ '+esc(markLabel(r,next))}</span></button>`;
+        <span class="next">${fin?'Finished ✓':(skipMode?'⤼ skip ':'→ ')+esc(markLabel(r,next))}</span></button>`;
     }).join('');
   }
   if(tick) clearInterval(tick);
@@ -542,14 +560,15 @@ function renderBoard(){
   const rows=computeBoard();
   const anyNoDist=rows.some(x=>x.noDist);
   if(!r.boats.length){ $('#boardTable').innerHTML=''; $('#boardHint').textContent='Add competitors in Setup.'; return; }
-  let leaderCorr=null,leaderCount=null;
+  let leaderCorr=null,leaderCount=null,leaderMark=null;
   const body=rows.map((x,i)=>{
-    if(i===0){leaderCorr=x.corr;leaderCount=x.count;}
+    if(i===0){leaderCorr=x.corr;leaderCount=x.count;leaderMark=x.timed?x.timed.markIdx:null;}
     let delta='';
     if(i>0&&x.corr!=null&&leaderCorr!=null){
-      delta = x.count===leaderCount ? '+'+fmtDur(x.corr-leaderCorr) : '−'+(leaderCount-x.count)+' mark'+(leaderCount-x.count>1?'s':'');
+      if(x.count!==leaderCount) delta='−'+(leaderCount-x.count)+' mark'+(leaderCount-x.count>1?'s':'');
+      else if(x.timed&&x.timed.markIdx===leaderMark) delta='+'+fmtDur(x.corr-leaderCorr);
     }
-    const mk=x.last? `<span class="chipm ${x.finished?'fin':''}">${x.finished?'FIN':esc(markLabel(r,x.last.markIdx))}</span>`:'<span class="chipm">—</span>';
+    const mk=x.last? `<span class="chipm ${x.finished?'fin':''}">${(x.finished?'FIN':esc(markLabel(r,x.last.markIdx)))+(x.last.skipped?' ⤼':'')}</span>`:'<span class="chipm">—</span>';
     return `<tr class="${x.boat.own?'own':''}">
       <td class="pos">${x.last?i+1:''}</td>
       <td class="name"><span class="bname">${esc(x.boat.name)}</span><br><span class="bsail mono">${esc(x.boat.sail||'')}</span></td>
@@ -560,7 +579,7 @@ function renderBoard(){
   $('#boardTable').innerHTML=`<thead><tr><th></th><th>Boat</th><th>At</th><th class="ct">Corrected</th><th class="dt">Δ leader</th></tr></thead><tbody>${body}</tbody>`;
   $('#boardHint').textContent =
     (r.scoring==='tot'?'Corrected = elapsed × factor, at each boat’s latest mark. ':'Corrected = elapsed − rating × cumulative NM. ')+
-    'Boats are ranked by marks completed, then corrected time.'+(anyNoDist?' *No distance set for that mark — showing raw elapsed.':'');
+    'Boats are ranked by marks completed, then corrected time. ⤼ = that mark was skipped (no time), so corrected is from the boat’s last timed mark.'+(anyNoDist?' *No distance set for that mark — showing raw elapsed.':'');
 }
 
 function renderLog(){
@@ -568,13 +587,15 @@ function renderLog(){
   const has=r.start!=null;
   $('#startLogRow').hidden=!has;
   if(has){ $('#startLogTime').textContent=fmtClockTime(r.start); $('#startLogDate').textContent=' · '+new Date(r.start).toLocaleDateString(); }
-  const items=[...r.roundings].sort((a,b)=>a.t-b.t);
+  const items=[...r.roundings].sort((a,b)=>(a.t??Infinity)-(b.t??Infinity));
   $('#logEmpty').hidden=items.length>0;
   $('#logList').innerHTML=items.map(x=>{
     const b=r.boats.find(bb=>bb.id===x.boatId);
+    const when=x.skipped?'<span class="skiptag">skipped</span>':fmtClockTime(x.t);
+    const el=x.skipped?' (edit to give it a time)':' · +'+fmtDur(x.t-r.start);
     return `<div class="logrow">
-      <span class="lt mono">${fmtClockTime(x.t)}</span>
-      <span class="lw"><b>${esc(b?b.name:'?')}</b><span class="lm"> — ${esc(markLabel(r,x.markIdx))} · +${fmtDur(x.t-r.start)}</span></span>
+      <span class="lt mono">${when}</span>
+      <span class="lw"><b>${esc(b?b.name:'?')}</b><span class="lm"> — ${esc(markLabel(r,x.markIdx))}${el}</span></span>
       <button class="iconb" data-tedit="${x.id}" title="Edit">✎</button></div>`;
   }).join('');
 }
@@ -821,29 +842,54 @@ $('#startBtn').addEventListener('click',()=>{
   r.start=Date.now(); save(); renderRace();
   if($('#wakeLock').checked) requestWake();
 });
+let skipMode=false;
+let lastSkip={id:null,at:0};
 function recordTap(boatId){
   const r=race(); if(r.start==null) return;
   const rds=boatRoundings(r,boatId);
   if(rds.length>=r.marks.length) return;
-  const lastT=rds.length?rds[rds.length-1].t:0;
+  const b=r.boats.find(x=>x.id===boatId);
+  if(skipMode){
+    if(lastSkip.id===boatId&&Date.now()-lastSkip.at<2500){ toast('Double-tap ignored — use Undo if the skip was wrong'); return; }
+    lastSkip={id:boatId,at:Date.now()};
+    r.roundings.push({id:uid(),boatId,markIdx:rds.length,t:null,skipped:true});
+    save();
+    toast(b.name+' — '+markLabel(r,rds.length)+' skipped, next: '+(rds.length+1>=r.marks.length?'finished':markLabel(r,rds.length+1)));
+    renderRace(); return;
+  }
+  const lastT=rds.length?(rds[rds.length-1].t||0):0;
   const now=Date.now();
   if(now-lastT<5000&&rds.length){ toast('Double-tap ignored (within 5 s) — use Undo if the last tap was wrong'); return; }
   r.roundings.push({id:uid(),boatId,markIdx:rds.length,t:now});
   save();
-  const b=r.boats.find(x=>x.id===boatId);
   if(navigator.vibrate) try{navigator.vibrate(30);}catch(e){}
   toast(b.name+' — '+markLabel(r,rds.length)+' @ '+fmtDur(now-r.start));
   renderRace();
 }
+$('#skipBtn').addEventListener('click',()=>{ skipMode=!skipMode; renderRace(); });
+$('#skipDoneBtn').addEventListener('click',()=>{ skipMode=false; renderRace(); });
+$('#skipAllBtn').addEventListener('click',()=>{
+  const r=race();
+  let n=0;
+  r.boats.forEach(b=>{
+    const rds=boatRoundings(r,b.id);
+    if(rds.length>=r.marks.length) return;
+    r.roundings.push({id:uid(),boatId:b.id,markIdx:rds.length,t:null,skipped:true});
+    n++;
+  });
+  if(!n){ toast('No boats to skip'); return; }
+  skipMode=false; save();
+  toast(n+' boat'+(n===1?'':'s')+' moved past their next mark — Undo reverses one at a time');
+  renderRace();
+});
 $('#fleetGrid').addEventListener('click',e=>{ const t=e.target.closest('[data-tap]'); if(t) recordTap(t.dataset.tap); });
 $('#pingBtn').addEventListener('click',e=>{ const id=e.currentTarget.dataset.boat; if(id) recordTap(id); });
 $('#undoBtn').addEventListener('click',()=>{
   const r=race();
   if(!r.roundings.length){ toast('Nothing to undo'); return; }
-  let li=0; for(let i=1;i<r.roundings.length;i++) if(r.roundings[i].t>r.roundings[li].t) li=i;
-  const [rm]=r.roundings.splice(li,1);
+  const rm=r.roundings.pop(); // entries are pushed in tap order, so last = most recent tap or skip
   const b=r.boats.find(x=>x.id===rm.boatId);
-  save(); toast('Undid '+(b?b.name:'?')+' at '+markLabel(r,rm.markIdx)); renderRace();
+  save(); toast('Undid '+(b?b.name:'?')+(rm.skipped?' skip':'')+' at '+markLabel(r,rm.markIdx)); renderRace();
 });
 $('#endRaceBtn').addEventListener('click',()=>{
   if(!confirm('End this race? It stays in the race list as archived — times are kept.')) return;
@@ -860,9 +906,10 @@ document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==
 let editTimeId=null; // rounding id, or '__start'
 function openTimeDlg(id){
   const r=race(); editTimeId=id;
-  const ts=id==='__start'?r.start:r.roundings.find(x=>x.id===id)?.t;
+  const entry=id==='__start'?null:r.roundings.find(x=>x.id===id);
+  const ts=id==='__start'?r.start:(entry?.t??r.start); // skipped entries prefill with the start time
   if(ts==null) return;
-  $('#timeDlgTitle').textContent=id==='__start'?'Edit start time':'Edit rounding time';
+  $('#timeDlgTitle').textContent=id==='__start'?'Edit start time':(entry?.skipped?'Set time for skipped mark':'Edit rounding time');
   const d=new Date(ts);
   $('#tInput').value=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0');
   $('#tDelete').hidden=id==='__start';
@@ -874,10 +921,11 @@ $('#tCancel').addEventListener('click',()=>$('#timeDlg').close());
 $('#tSave').addEventListener('click',()=>{
   const r=race(); const v=$('#tInput').value; if(!v) return;
   const parts=v.split(':').map(Number);
-  const base=new Date(editTimeId==='__start'?r.start:r.roundings.find(x=>x.id===editTimeId).t);
+  const entry=editTimeId==='__start'?null:r.roundings.find(x=>x.id===editTimeId);
+  const base=new Date(editTimeId==='__start'?r.start:(entry.t??r.start));
   base.setHours(parts[0],parts[1],parts[2]||0,0);
   if(editTimeId==='__start') r.start=base.getTime();
-  else r.roundings.find(x=>x.id===editTimeId).t=base.getTime();
+  else { entry.t=base.getTime(); delete entry.skipped; }
   save(); $('#timeDlg').close(); renderLog();
 });
 $('#tDelete').addEventListener('click',()=>{
@@ -895,13 +943,14 @@ $('#copyCsvBtn').addEventListener('click',async()=>{
   const lines=[['Pos','Boat','Sail','Rating','Marks completed','Last mark','Elapsed','Corrected'].join(',')];
   rows.forEach((x,i)=>{
     lines.push([x.last?i+1:'',csv(x.boat.name),csv(x.boat.sail),x.boat.rating??'',x.count,
-      x.last?csv(markLabel(r,x.last.markIdx)):'', x.last?fmtDur(x.last.t-r.start):'', x.corr!=null?fmtDur(x.corr):''].join(','));
+      x.last?csv(markLabel(r,x.last.markIdx)+(x.last.skipped?' (skipped)':'')):'',
+      x.timed?fmtDur(x.timed.t-r.start):'', x.corr!=null?fmtDur(x.corr):''].join(','));
   });
   lines.push('');
   lines.push('Boat,Mark,Time of day,Elapsed');
-  [...r.roundings].sort((a,b)=>a.t-b.t).forEach(x=>{
+  [...r.roundings].sort((a,b)=>(a.t??Infinity)-(b.t??Infinity)).forEach(x=>{
     const b=r.boats.find(bb=>bb.id===x.boatId);
-    lines.push([csv(b?.name),csv(markLabel(r,x.markIdx)),fmtClockTime(x.t),fmtDur(x.t-r.start)].join(','));
+    lines.push([csv(b?.name),csv(markLabel(r,x.markIdx)),x.skipped?'skipped':fmtClockTime(x.t),x.skipped?'':fmtDur(x.t-r.start)].join(','));
   });
   try{ await navigator.clipboard.writeText(lines.join('\n')); toast('Results copied to clipboard'); }
   catch(e){ toast('Clipboard blocked — long-press to copy from the log instead'); }
