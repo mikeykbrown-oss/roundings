@@ -259,7 +259,15 @@
           <button class="btn primary" id="orcLoadBtn">Load boats</button>
         </div>
         <div class="row" style="margin-top:8px">
-          <div class="grow"><label class="f" for="orcField">Rating figure to use</label>
+          <div class="grow"><label class="f" for="orcFamily">Certificate type</label>
+            <select id="orcFamily">
+              <option value="ORC">Standard (ORC International &amp; Club)</option>
+              <option value="NS">Non Spinnaker</option>
+              <option value="DH">Double Handed</option>
+            </select></div>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <div class="grow"><label class="f" for="orcField">Rating figure to use (as titled on the certificate)</label>
             <select id="orcField"></select></div>
         </div>
         <input type="text" id="orcSearch" placeholder="Search yacht name, sail no, class…" style="margin-top:8px" hidden>
@@ -286,8 +294,23 @@
         <button class="btn quiet" id="undoBtn">Undo tap</button>
       </div>
       <div id="preStart">
-        <button id="startBtn">Start race</button>
-        <p class="hint" style="text-align:center">Tap at the starting signal. You can correct the start time later in the log.</p>
+        <div id="preButtons">
+          <button id="startBtn">Start race</button>
+          <button class="btn" id="seqBtn" style="width:100%;margin-top:8px;padding:14px">Start 5-minute sequence</button>
+          <p class="hint" style="text-align:center">Tap <b>Start race</b> at the starting signal, or run the 5-minute sequence from the warning signal. Times can be corrected later in the log.</p>
+        </div>
+        <div id="seqPanel" hidden>
+          <div class="row" style="margin-top:4px">
+            <button class="btn grow" data-sync="4">Sync 4:00</button>
+            <button class="btn grow" data-sync="2">Sync 2:00</button>
+            <button class="btn grow" data-sync="1">Sync 1:00</button>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <button class="btn primary grow" id="gunNowBtn">Gun — start now</button>
+            <button class="btn quiet" id="seqCancelBtn">Cancel</button>
+          </div>
+          <p class="hint" style="text-align:center">Race starts automatically at zero. Missed the countdown by a beat? Tap <b>Sync</b> at the 4-, 2- or 1-minute signal to snap the clock to it.</p>
+        </div>
       </div>
       <div id="racing" hidden>
         <div id="skipBanner" hidden>
@@ -312,6 +335,9 @@
           <table class="board" id="boardTable"></table>
         </div>
       </div>
+      <div class="row">
+        <button class="btn" id="pdfBtnBoard">Download results PDF</button>
+      </div>
       <p class="hint" id="boardHint"></p>
     </section>
 
@@ -329,6 +355,7 @@
       </div>
       <div class="row">
         <button class="btn" id="copyCsvBtn">Copy results as CSV</button>
+        <button class="btn" id="pdfBtnLog">Download results PDF</button>
       </div>
     </section>
   </main>
@@ -383,9 +410,12 @@
 <dialog id="timeDlg">
   <h3 id="timeDlgTitle">Edit time</h3>
   <div class="dgrid">
-    <div class="full"><label class="f" for="tInput">Time of day (local, hh:mm:ss)</label>
+    <div class="full"><label class="f" for="tInput">Clock time — GPS time of day (hh:mm:ss)</label>
       <input type="time" id="tInput" step="1"></div>
+    <div class="full" id="tElapsedWrap"><label class="f" for="tElapsed">Elapsed from start (h:mm:ss)</label>
+      <input type="text" id="tElapsed" class="mono" inputmode="numeric" placeholder="0:41:23"></div>
   </div>
+  <p class="hint" style="margin:0 0 8px">Enter either one — they stay in step. Use the clock time to type a fix straight off a GPS.</p>
   <div class="dfoot">
     <button class="btn danger" id="tDelete">Delete entry</button>
     <span>
@@ -403,19 +433,24 @@
 const LS_KEY='roundings.v1';
 const uid=()=>Math.random().toString(36).slice(2,10);
 const ORC_COUNTRIES=[["ORC","International (ORC)"],["AUS","Australia"],["AUT","Austria"],["BRA","Brazil"],["BUL","Bulgaria"],["CAN","Canada"],["CYP","Cyprus"],["DEN","Denmark"],["ESP","Spain"],["EST","Estonia"],["FIN","Finland"],["FRA","France"],["GER","Germany"],["GRE","Greece"],["HUN","Hungary"],["IRL","Ireland"],["ISR","Israel"],["ITA","Italy"],["JPN","Japan"],["KOR","Korea"],["LTU","Lithuania"],["NED","Netherlands"],["NOR","Norway"],["POR","Portugal"],["RSA","South Africa"],["SLO","Slovenia"],["SUI","Switzerland"],["SWE","Sweden"],["UKR","Ukraine"],["USA","United States"],["GBR","Great Britain"],["MU_","Multihulls"],["SY_","Superyachts"]];
+/* Labels match the wording on the ORC certificate's Scoring Options table verbatim.
+   RMS field mapping (verified against printed certificates, Sep 2026):
+   TMF_Inshore = ToT "Windward / Leeward", TMF_Offshore = ToT "Coastal/Long Distance",
+   APHT/APHD = "All purpose", TN and TND = "Triple Number" ToT/ToD, GPH = "General Purpose Handicap (GPH)". */
 const ORC_FIELDS={
-  tot:[["TMF_Offshore","ToT Offshore (TMF)"],["TMF_Inshore","ToT Inshore (TMF)"],
-       ["TN_Offshore_Low","Triple No. Offshore — Low wind"],["TN_Offshore_Medium","Triple No. Offshore — Medium"],["TN_Offshore_High","Triple No. Offshore — High"],
-       ["TN_Inshore_Low","Triple No. Inshore — Low wind"],["TN_Inshore_Medium","Triple No. Inshore — Medium"],["TN_Inshore_High","Triple No. Inshore — High"]],
-  tod:[["GPH","GPH (general purpose, s/NM)"],
-       ["TND_Offshore_Low","ToD Offshore — Low wind"],["TND_Offshore_Medium","ToD Offshore — Medium"],["TND_Offshore_High","ToD Offshore — High"],
-       ["TND_Inshore_Low","ToD Inshore — Low wind"],["TND_Inshore_Medium","ToD Inshore — Medium"],["TND_Inshore_High","ToD Inshore — High"]]
+  tot:[["TMF_Offshore","Time On Time — Coastal/Long Distance"],["TMF_Inshore","Time On Time — Windward / Leeward"],["APHT","Time On Time — All purpose (APH)"],
+       ["TN_Offshore_Low","Triple Number Coastal/Long Distance Low"],["TN_Offshore_Medium","Triple Number Coastal/Long Distance Medium"],["TN_Offshore_High","Triple Number Coastal/Long Distance High"],
+       ["TN_Inshore_Low","Triple Number Windward/Leeward Low"],["TN_Inshore_Medium","Triple Number Windward/Leeward Medium"],["TN_Inshore_High","Triple Number Windward/Leeward High"]],
+  tod:[["GPH","General Purpose Handicap (GPH)"],["APHD","Time On Distance — All purpose (APH)"],
+       ["TND_Offshore_Low","Triple Number Coastal/Long Distance Low"],["TND_Offshore_Medium","Triple Number Coastal/Long Distance Medium"],["TND_Offshore_High","Triple Number Coastal/Long Distance High"],
+       ["TND_Inshore_Low","Triple Number Windward/Leeward Low"],["TND_Inshore_Medium","Triple Number Windward/Leeward Medium"],["TND_Inshore_High","Triple Number Windward/Leeward High"]]
 };
+const ORC_CTYPES={INTL:'International',CLUB:'Club',NSIN:'Non Spinnaker International',NSCL:'Non Spinnaker Club',DHIN:'Double Handed International',DHCL:'Double Handed Club'};
 
 function newRace(name){
   return { id:uid(), name:name||'New race', created:Date.now(), scoring:'tot',
     marks:[{name:'Mark 1',dist:null},{name:'Mark 2',dist:null},{name:'Finish',dist:null}],
-    boats:[], start:null, roundings:[], archived:false, orcField:'TMF_Offshore' };
+    boats:[], start:null, seq:null, roundings:[], archived:false, orcField:'TMF_Offshore' };
 }
 let db={races:[],activeId:null};
 function load(){
@@ -517,10 +552,14 @@ let tick=null;
 function renderRace(){
   const r=race();
   const started=r.start!=null;
+  const inSeq=!started&&!!r.seq;
   $('#preStart').hidden=started;
+  $('#preButtons').hidden=inSeq;
+  $('#seqPanel').hidden=!inSeq;
   $('#racing').hidden=!started;
   $('#raceEmpty').hidden=r.boats.length>0;
-  $('#clockSub').textContent=started?'Elapsed — started '+fmtClockTime(r.start):'Race clock';
+  $('#clockSub').textContent=started?'Elapsed — started '+fmtClockTime(r.start)
+    :inSeq?'Countdown — gun at '+fmtClockTime(r.seq.gunAt):'Race clock';
   updateClock();
   if(started){
     $('#skipBanner').hidden=!skipMode;
@@ -548,11 +587,26 @@ function renderRace(){
     }).join('');
   }
   if(tick) clearInterval(tick);
-  if(started&&!r.archived) tick=setInterval(()=>{updateClock(); if(activeTab==='board') renderBoard();},1000);
+  if(inSeq) tick=setInterval(seqTick,250);
+  else if(started&&!r.archived) tick=setInterval(()=>{updateClock(); if(activeTab==='board') renderBoard();},1000);
+}
+function seqTick(){
+  const r=race();
+  if(!r.seq){ renderRace(); return; }
+  if(Date.now()>=r.seq.gunAt){ toast('START'); fireGun(r.seq.gunAt); return; }
+  updateClock();
 }
 function updateClock(){
   const r=race();
-  $('#clockEl').textContent=r.start!=null?fmtDur(Date.now()-r.start):'–:––:––';
+  const el=$('#clockEl');
+  if(r.start!=null){ el.textContent=fmtDur(Date.now()-r.start); el.style.color=''; return; }
+  if(r.seq){
+    const rem=Math.max(0,Math.ceil((r.seq.gunAt-Date.now())/1000));
+    el.textContent='−'+Math.floor(rem/60)+':'+String(rem%60).padStart(2,'0');
+    el.style.color=rem<=60?'var(--accent)':'';
+    return;
+  }
+  el.textContent='–:––:––'; el.style.color='';
 }
 
 function renderBoard(){
@@ -795,19 +849,26 @@ $('#orcFile').addEventListener('change',e=>{
   rd.readAsText(f);
 });
 $('#orcSearch').addEventListener('input',renderOrcResults);
+$('#orcFamily').addEventListener('change',renderOrcResults);
 function renderOrcResults(){
   if(!orcData) return;
   const q=$('#orcSearch').value.trim().toLowerCase();
   const field=race().orcField;
-  orcHits=orcData.filter(c=>!q||[c.YachtName,c.SailNo,c.Class].some(v=>v&&String(v).toLowerCase().includes(q))).slice(0,100);
+  const fam=$('#orcFamily').value;
+  const inFam=orcData.filter(c=>(c.Family||'ORC')===fam);
+  orcHits=inFam.filter(c=>!q||[c.YachtName,c.SailNo,c.Class].some(v=>v&&String(v).toLowerCase().includes(q))).slice(0,100);
   $('#orcResults').innerHTML=orcHits.map((c,i)=>{
     const k=certKey(c), dup=inFleet(c);
+    const ct=ORC_CTYPES[c.C_Type]||'';
     return `<label class="orcrow ${dup?'infleet':''}">
       <input type="checkbox" data-orc="${i}" ${orcSel.has(k)?'checked':''} ${dup?'disabled':''}>
-      <span class="grow"><b>${esc(c.YachtName||'?')}</b><div>${esc(c.SailNo||'')} · ${esc(c.Class||'')}${dup?' · already in fleet':''}</div></span>
+      <span class="grow"><b>${esc(c.YachtName||'?')}</b><div>${esc(c.SailNo||'')} · ${esc(c.Class||'')}${ct?' · '+ct:''}${dup?' · already in fleet':''}</div></span>
       <span class="rv mono">${c[field]!=null?c[field]:'n/a'}</span>
     </label>`;
-  }).join('')||'<div class="empty">No matches.</div>';
+  }).join('')||(
+    fam!=='ORC'&&!inFam.length
+      ? `<div class="empty">No ${fam==='NS'?'Non Spinnaker':'Double Handed'} certificates in this country's data. If this data was loaded from an old file, reload from the country list.</div>`
+      : '<div class="empty">No matches.</div>');
   updOrcMeta();
 }
 function updOrcMeta(){
@@ -836,11 +897,34 @@ $('#orcAddBtn').addEventListener('click',()=>{
 });
 
 /* ================= race events ================= */
+function fireGun(at){
+  const r=race();
+  r.start=at; r.seq=null; save();
+  if(navigator.vibrate) try{navigator.vibrate([120,80,120,80,320]);}catch(e){}
+  renderRace();
+}
 $('#startBtn').addEventListener('click',()=>{
   const r=race();
   if(!r.boats.length){ toast('Add competitors in Setup first'); setTab('setup'); return; }
-  r.start=Date.now(); save(); renderRace();
+  fireGun(Date.now());
   if($('#wakeLock').checked) requestWake();
+});
+$('#seqBtn').addEventListener('click',()=>{
+  const r=race();
+  if(!r.boats.length){ toast('Add competitors in Setup first'); setTab('setup'); return; }
+  r.seq={gunAt:Date.now()+5*60000}; save(); renderRace();
+  if($('#wakeLock').checked) requestWake();
+});
+$('#seqPanel').addEventListener('click',e=>{
+  const t=e.target.closest('[data-sync]'); if(!t) return;
+  const r=race(); if(!r.seq) return;
+  const mins=+t.dataset.sync;
+  r.seq.gunAt=Date.now()+mins*60000; save(); updateClock();
+  toast('Synced — '+mins+' min to the start');
+});
+$('#gunNowBtn').addEventListener('click',()=>fireGun(Date.now()));
+$('#seqCancelBtn').addEventListener('click',()=>{
+  const r=race(); r.seq=null; save(); renderRace();
 });
 let skipMode=false;
 let lastSkip={id:null,at:0};
@@ -904,6 +988,18 @@ document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==
 
 /* ================= log events ================= */
 let editTimeId=null; // rounding id, or '__start'
+function dlgTimestamp(){ // current dialog clock time resolved against the edited entry's date
+  const r=race(); const v=$('#tInput').value; if(!v) return null;
+  const parts=v.split(':').map(Number);
+  const entry=editTimeId==='__start'?null:r.roundings.find(x=>x.id===editTimeId);
+  const base=new Date(editTimeId==='__start'?r.start:(entry?.t??r.start));
+  base.setHours(parts[0],parts[1],parts[2]||0,0);
+  return base.getTime();
+}
+function syncElapsedFromClock(){
+  const r=race(); const ts=dlgTimestamp();
+  $('#tElapsed').value=(ts!=null&&r.start!=null)?fmtDur(ts-r.start).replace('−','-'):'';
+}
 function openTimeDlg(id){
   const r=race(); editTimeId=id;
   const entry=id==='__start'?null:r.roundings.find(x=>x.id===id);
@@ -912,20 +1008,29 @@ function openTimeDlg(id){
   $('#timeDlgTitle').textContent=id==='__start'?'Edit start time':(entry?.skipped?'Set time for skipped mark':'Edit rounding time');
   const d=new Date(ts);
   $('#tInput').value=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0');
+  $('#tElapsedWrap').hidden=id==='__start';
+  if(id!=='__start') syncElapsedFromClock();
   $('#tDelete').hidden=id==='__start';
   $('#timeDlg').showModal();
 }
+$('#tInput').addEventListener('input',()=>{ if(editTimeId!=='__start') syncElapsedFromClock(); });
+$('#tElapsed').addEventListener('input',()=>{
+  const r=race(); if(r.start==null) return;
+  const v=$('#tElapsed').value.trim(); if(!v) return;
+  const neg=v.startsWith('-')||v.startsWith('−');
+  const parts=v.replace(/^[-−]/,'').split(':').map(s=>parseFloat(s));
+  if(parts.some(x=>!isFinite(x))) return;
+  let secs=0; parts.forEach(x=>{secs=secs*60+x;});
+  const d=new Date(r.start+(neg?-1:1)*secs*1000);
+  $('#tInput').value=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0');
+});
 document.querySelector('[data-editstart]').addEventListener('click',()=>openTimeDlg('__start'));
 $('#logList').addEventListener('click',e=>{ const t=e.target.closest('[data-tedit]'); if(t) openTimeDlg(t.dataset.tedit); });
 $('#tCancel').addEventListener('click',()=>$('#timeDlg').close());
 $('#tSave').addEventListener('click',()=>{
-  const r=race(); const v=$('#tInput').value; if(!v) return;
-  const parts=v.split(':').map(Number);
-  const entry=editTimeId==='__start'?null:r.roundings.find(x=>x.id===editTimeId);
-  const base=new Date(editTimeId==='__start'?r.start:(entry.t??r.start));
-  base.setHours(parts[0],parts[1],parts[2]||0,0);
-  if(editTimeId==='__start') r.start=base.getTime();
-  else { entry.t=base.getTime(); delete entry.skipped; }
+  const r=race(); const ts=dlgTimestamp(); if(ts==null) return;
+  if(editTimeId==='__start') r.start=ts;
+  else { const entry=r.roundings.find(x=>x.id===editTimeId); entry.t=ts; delete entry.skipped; }
   save(); $('#timeDlg').close(); renderLog();
 });
 $('#tDelete').addEventListener('click',()=>{
@@ -957,9 +1062,77 @@ $('#copyCsvBtn').addEventListener('click',async()=>{
 });
 function csv(s){ s=String(s??''); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }
 
+/* ---- PDF export ---- */
+let pdfLibP=null;
+function loadPdfLib(){
+  if(window.jspdf&&window.jspdf.jsPDF&&window.jspdf.jsPDF.API.autoTable) return Promise.resolve();
+  if(!pdfLibP){
+    pdfLibP=['vendor/jspdf.umd.min.js','vendor/jspdf.plugin.autotable.min.js'].reduce((p,src)=>p.then(()=>new Promise((res,rej)=>{
+      const s=document.createElement('script'); s.src=src; s.onload=res;
+      s.onerror=()=>rej(new Error(src)); document.head.appendChild(s);
+    })),Promise.resolve()).catch(e=>{ pdfLibP=null; throw e; });
+  }
+  return pdfLibP;
+}
+async function downloadPdf(){
+  const r=race();
+  if(r.start==null||!r.boats.length){ toast('Nothing to export yet — start the race first'); return; }
+  try{ await loadPdfLib(); }catch(e){ toast('PDF module unavailable — open the app once online, then retry'); return; }
+  const doc=new window.jspdf.jsPDF();
+  const finIdx=r.marks.length-1;
+  const rows=computeBoard();
+  const startTxt=fmtClockTime(r.start);
+  let leaderCorr=null,leaderCount=null,leaderMark=null;
+  const body=rows.map((x,i)=>{
+    if(i===0){leaderCorr=x.corr;leaderCount=x.count;leaderMark=x.timed?x.timed.markIdx:null;}
+    let delta='';
+    if(i>0&&x.corr!=null&&leaderCorr!=null){
+      if(x.count!==leaderCount) delta='-'+(leaderCount-x.count)+' mark'+(leaderCount-x.count>1?'s':'');
+      else if(x.timed&&x.timed.markIdx===leaderMark) delta='+'+fmtDur(x.corr-leaderCorr).replace('−','-');
+    }
+    const fin=(x.finished&&x.timed&&x.timed.markIdx===finIdx)?x.timed:null;
+    return [x.last?String(i+1):'-',
+      x.boat.name+(x.boat.sail?'\n'+x.boat.sail:''),
+      x.boat.rating!=null?String(x.boat.rating):'-',
+      startTxt,
+      fin?fmtClockTime(fin.t):(x.last?'at '+markLabel(r,x.last.markIdx)+(x.last.skipped?' (skipped)':''):'-'),
+      fin?fmtDur(fin.t-r.start):'-',
+      x.corr!=null?fmtDur(x.corr).replace('−','-')+(x.noDist?'*':''):'-',
+      delta];
+  });
+  doc.setFontSize(17); doc.setTextColor(20,40,58);
+  doc.text(r.name||'Race results',14,17);
+  doc.setFontSize(10); doc.setTextColor(110);
+  doc.text('Results — '+new Date(r.start).toLocaleDateString(undefined,{day:'numeric',month:'long',year:'numeric'})
+    +'  ·  Start '+startTxt
+    +'  ·  '+(r.scoring==='tot'?'Time-on-time: corrected = elapsed × factor':'Time-on-distance: corrected = elapsed - rating × NM'),14,24);
+  doc.autoTable({
+    startY:29,
+    head:[['Pos','Boat','Handicap','Start','Finish','Elapsed','Corrected','Delta']],
+    body,
+    styles:{fontSize:9,cellPadding:2.2,textColor:[20,40,58]},
+    headStyles:{fillColor:[226,78,18],textColor:255,fontStyle:'bold'},
+    alternateRowStyles:{fillColor:[247,249,248]},
+    columnStyles:{0:{cellWidth:11,fontStyle:'bold'},2:{halign:'right'},3:{halign:'right'},4:{halign:'right'},5:{halign:'right'},6:{halign:'right'},7:{halign:'right'}},
+  });
+  let y=doc.lastAutoTable.finalY+6;
+  doc.setFontSize(8); doc.setTextColor(130);
+  const notes=['Boats are ranked by marks completed, then corrected time. Delta is to the leader at the same mark.'];
+  if(rows.some(x=>x.noDist)) notes.push('* No distance set for that mark — corrected shows raw elapsed.');
+  notes.forEach(n=>{ doc.text(n,14,y); y+=4; });
+  doc.text('Scored with Roundings · generated '+new Date().toLocaleString(),14,doc.internal.pageSize.getHeight()-8);
+  doc.save((r.name||'race').replace(/[^\w-]+/g,'_')+'_results.pdf');
+  toast('PDF saved');
+}
+$('#pdfBtnBoard').addEventListener('click',downloadPdf);
+$('#pdfBtnLog').addEventListener('click',downloadPdf);
+
 /* ================= boot ================= */
-load(); save();
-setTab(race().start!=null&&!race().archived?'race':'setup');
+load();
+// a countdown that reached zero while the app was closed: the race started at the gun time
+db.races.forEach(r=>{ if(r.start==null&&r.seq&&Date.now()>=r.seq.gunAt){ r.start=r.seq.gunAt; r.seq=null; } });
+save();
+setTab((race().start!=null||race().seq)&&!race().archived?'race':'setup');
 </script>
 
 <script>

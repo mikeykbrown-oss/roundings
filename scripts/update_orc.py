@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Mirror ORC RMS certificate data into data/orc/ as slim per-country JSON files.
 
-Downloads each country's full certificate file from data.orc.org, keeps only
-identity + scoring fields (drops polar tables and regional scoring variants,
-~95% of the bytes), and writes an index the app uses for its country picker.
+Downloads each country's certificate files from data.orc.org — the standard
+family (ORC = International + Club) plus the Non Spinnaker (NS) and Double
+Handed (DH) certificate families — keeps only identity + scoring fields
+(drops polar tables and regional scoring variants, ~95% of the bytes), and
+writes an index the app uses for its country picker.
 """
 import json, os, sys, time, urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -21,39 +23,59 @@ COUNTRIES = [
     ("USA", "United States"), ("MU_", "Multihulls"), ("SY_", "Superyachts"),
 ]
 
-KEEP = ["YachtName", "SailNo", "Class", "CertNo", "IssueDate", "GPH",
+# Certificate families: standard (International + Club), Non Spinnaker, Double Handed.
+FAMILIES = ["ORC", "NS", "DH"]
+
+KEEP = ["YachtName", "SailNo", "Class", "CertNo", "IssueDate", "Family", "C_Type",
+        "GPH", "APHD", "APHT",
         "TMF_Inshore", "TMF_Offshore",
         "TN_Inshore_Low", "TN_Inshore_Medium", "TN_Inshore_High",
         "TN_Offshore_Low", "TN_Offshore_Medium", "TN_Offshore_High",
         "TND_Inshore_Low", "TND_Inshore_Medium", "TND_Inshore_High",
         "TND_Offshore_Low", "TND_Offshore_Medium", "TND_Offshore_High"]
 
-URL = "https://data.orc.org/public/WPub.dll?action=DownRMS&ext=json&Family=ORC&CountryId={}"
+URL = "https://data.orc.org/public/WPub.dll?action=DownRMS&ext=json&Family={}&CountryId={}"
 OUT = os.path.join(os.path.dirname(__file__), "..", "data", "orc")
 
 
-def fetch(cid, name):
-    req = urllib.request.Request(URL.format(cid), headers={"User-Agent": "roundings-app-mirror"})
+def fetch_family(cid, family):
+    req = urllib.request.Request(URL.format(family, cid), headers={"User-Agent": "roundings-app-mirror"})
     for attempt in (1, 2):
         try:
             with urllib.request.urlopen(req, timeout=300) as r:
                 raw = r.read().decode("utf-8-sig")
             d = json.loads(raw)
             boats = [{k: c.get(k) for k in KEEP} for c in d.get("rms", [])]
-            boats.sort(key=lambda b: (b.get("YachtName") or "").upper())
-            return cid, name, boats
+            for b in boats:
+                b["Family"] = b.get("Family") or family
+            return boats
         except Exception as e:
             if attempt == 2:
-                print(f"  FAIL {cid}: {e}", file=sys.stderr)
-                return cid, name, None
+                raise RuntimeError(f"{cid}/{family}: {e}")
             time.sleep(5)
+
+
+def fetch(cid, name):
+    boats = []
+    for family in FAMILIES:
+        try:
+            boats += fetch_family(cid, family)
+        except RuntimeError as e:
+            # the standard family is the backbone — without it, keep the old file;
+            # a missing NS/DH download just means that family is skipped this week
+            if family == "ORC":
+                print(f"  FAIL {e}", file=sys.stderr)
+                return cid, name, None
+            print(f"  warn {e}", file=sys.stderr)
+    boats.sort(key=lambda b: (b.get("YachtName") or "").upper())
+    return cid, name, boats
 
 
 def main():
     os.makedirs(OUT, exist_ok=True)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     index = []
-    with ThreadPoolExecutor(max_workers=6) as ex:
+    with ThreadPoolExecutor(max_workers=8) as ex:
         futs = [ex.submit(fetch, cid, name) for cid, name in COUNTRIES]
         for f in as_completed(futs):
             cid, name, boats = f.result()
