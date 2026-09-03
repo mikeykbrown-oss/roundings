@@ -29,6 +29,8 @@
   const start=now-78.4*M;
   const rds=[];
   boats.forEach(b=>tl[b.name].forEach((m,i)=>{ if(m!=null) rds.push({id:uid(),boatId:b.id,markIdx:i,t:Math.round(start+m*M),skipped:false}); }));
+  // Hero shot (step 0): own boat still racing so the PING button shows.
+  if(step===0){ const k=boats.find(b=>b.own); const i=rds.findIndex(r=>r.boatId===k.id&&r.markIdx===3); if(i>=0) rds.splice(i,1); }
   const live=mk('Autumn Series — Race 4',start,rds);
 
   const cd=mk('Autumn Series — Race 5',null,[]); cd.seq={gunAt:now+3*M+12000};

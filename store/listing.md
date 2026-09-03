@@ -83,14 +83,18 @@ No sign-in is required. To try the app: on the Setup tab, tap Add boat to enter 
 
 ## Screenshots
 
-Captured from the iOS Simulator at native resolution, in `store/screenshots/`. Apple requires the 6.9" iPhone set (1320 × 2868) and, because the app also targets iPad, a 13" iPad set (2064 × 2752). Suggested order and captions if you later add text overlays:
+Six iPhone 6.9" screenshots (1320 × 2868, the only iPhone size Apple now requires; it scales them for smaller phones) are in `store/screenshots/`, rendered from the seeded demo race at native pixel density. Upload in this order:
 
 1. Race — "One tap per boat, per mark"
 2. Board — "Corrected time, live"
-3. Setup — "ORC certificates built in"
+3. Setup — "ORC certificates built in, re-rate after the race"
 4. Log — "Fix a rounding from your GPS clock"
 5. Countdown — "Five-minute sequence, synced to the flags"
 6. Multi-fleet — "Rolling starts for the race bridge"
+
+The app is iPhone-only for 1.0 (`TARGETED_DEVICE_FAMILY = 1`), so no iPad screenshots are needed. iPads can still install it in compatibility mode. Adding a proper iPad layout later means switching the target back to "1,2" and supplying 13" iPad shots (2064 × 2752).
+
+To regenerate after UI changes: `npm run sync`, inject `store/seed.js` into `ios/App/App/public/index.html`, and capture either from the simulator or with headless Chromium at 440 × 956 CSS px, device scale 3.
 
 ## Before first upload
 
