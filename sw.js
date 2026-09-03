@@ -1,4 +1,4 @@
-const CACHE = 'roundings-v6';
+const CACHE = 'roundings-v7';
 const PRECACHE = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png',
   'vendor/jspdf.umd.min.js', 'vendor/jspdf.plugin.autotable.min.js'];
 

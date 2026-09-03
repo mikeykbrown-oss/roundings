@@ -266,6 +266,17 @@
         <p class="hint">Mark one boat as <b>your boat</b> — it becomes the big PING button on the race screen.</p>
       </div>
 
+      <div class="eyebrow" id="rerateTitle" hidden>Handicap figure</div>
+      <div class="card" id="rerateCard" hidden>
+        <div class="row">
+          <div class="grow"><label class="f" for="applyField">Rating figure (as titled on the certificate)</label>
+            <select id="applyField"></select></div>
+          <select id="applyScope" style="width:auto;align-self:flex-end" hidden></select>
+          <button class="btn primary" id="applyFieldBtn" style="align-self:flex-end">Re-rate</button>
+        </div>
+        <p class="hint">Only knew the wind after the race? Pick the matching certificate figure (e.g. Triple Number … Low / Medium / High) and re-rate — corrected times, the board and the PDF update instantly, before or after the finish. Boats added manually keep their typed rating.</p>
+      </div>
+
       <div class="eyebrow" id="orcSectionTitle" hidden>ORC import</div>
       <div class="card" id="orcCard" hidden>
         <h3>ORC certificates</h3>
@@ -464,6 +475,7 @@ const ORC_FIELDS={
        ["TND_Inshore_Low","Triple Number Windward/Leeward Low"],["TND_Inshore_Medium","Triple Number Windward/Leeward Medium"],["TND_Inshore_High","Triple Number Windward/Leeward High"]]
 };
 const ORC_CTYPES={INTL:'International',CLUB:'Club',NSIN:'Non Spinnaker International',NSCL:'Non Spinnaker Club',DHIN:'Double Handed International',DHCL:'Double Handed Club'};
+const CERT_FIELDS=[...new Set(Object.values(ORC_FIELDS).flat().map(x=>x[0]))]; // every scoring figure we keep per boat, so the fleet can be re-rated after the race
 
 function newRace(name){
   return { id:uid(), name:name||'New race', created:Date.now(), scoring:'tot',
@@ -594,6 +606,14 @@ function renderSetup(){
   fsel.innerHTML=ORC_FIELDS[r.scoring].map(([v,l])=>`<option value="${v}" ${v===r.orcField?'selected':''}>${esc(l)}</option>`).join('');
   fillFleetSelect($('#orcFleet'));
   $('#orcFleet').hidden=!fs;
+  const anyCert=r.boats.some(b=>b.orc);
+  $('#rerateTitle').hidden=!anyCert;
+  $('#rerateCard').hidden=!anyCert;
+  if(anyCert){
+    $('#applyField').innerHTML=ORC_FIELDS[r.scoring].map(([v,l])=>`<option value="${v}" ${v===r.orcField?'selected':''}>${esc(l)}</option>`).join('');
+    $('#applyScope').hidden=!fs;
+    if(fs) $('#applyScope').innerHTML='<option value="">All fleets</option>'+fs.map(f=>`<option value="${f.id}">${esc(f.name)}</option>`).join('');
+  }
 }
 function fillFleetSelect(sel,chosen){
   const fs=fleetsOf(race());
@@ -866,6 +886,25 @@ $('#fleetsList').addEventListener('click',e=>{
   save(); renderSetup();
 });
 
+/* ---- re-rate from stored certificate figures ---- */
+$('#applyFieldBtn').addEventListener('click',()=>{
+  const r=race();
+  const field=$('#applyField').value;
+  const scope=$('#applyScope').hidden?'':$('#applyScope').value;
+  let updated=0,noval=0,manual=0;
+  r.boats.forEach(b=>{
+    if(scope&&effFleetId(r,b)!==scope) return;
+    if(!b.orc){ manual++; return; }
+    if(b.orc[field]==null){ noval++; return; }
+    b.rating=b.orc[field]; updated++;
+  });
+  if(!scope) r.orcField=field;
+  save(); renderSetup();
+  toast(updated+' boat'+(updated===1?'':'s')+' re-rated'
+    +(noval?' · '+noval+' without that figure':'')
+    +(manual?' · '+manual+' manual rating'+(manual===1?'':'s')+' kept':''));
+});
+
 /* ---- boat dialog ---- */
 let editBoatId=null;
 function openBoatDlg(id){
@@ -1075,7 +1114,9 @@ $('#orcAddBtn').addEventListener('click',()=>{
   orcSel.forEach(c=>{
     if(inFleet(c)) return;
     if(c[field]==null){ noval++; return; }
-    r.boats.push({id:uid(),name:c.YachtName,sail:c.SailNo||'',rating:c[field],own:false,...(toFleet?{fleetId:toFleet}:{})});
+    r.boats.push({id:uid(),name:c.YachtName,sail:c.SailNo||'',rating:c[field],own:false,
+      orc:Object.fromEntries(CERT_FIELDS.map(k=>[k,c[k]??null])),
+      ...(toFleet?{fleetId:toFleet}:{})});
     added++;
   });
   orcSel.clear(); save(); renderSetup(); renderOrcResults();
