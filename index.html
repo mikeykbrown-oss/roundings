@@ -40,6 +40,7 @@
     --shadow:0 1px 3px rgba(0,0,0,.4);
   }
   *{box-sizing:border-box}
+  [hidden]{display:none!important}
   html,body{height:100%}
   body{
     margin:0; background:var(--bg); color:var(--ink);
@@ -223,10 +224,24 @@
             </select></div>
         </div>
         <p class="hint" id="scoringHint"></p>
+        <div class="row" style="margin-top:10px">
+          <label class="row" style="gap:6px;font-size:14px"><input type="checkbox" id="fleetMode"> Score multiple fleets</label>
+        </div>
+        <p class="hint" id="fleetHint" hidden>Each fleet starts and scores separately, but every boat stays on the one race screen — made for a race bridge running several classes off one line.</p>
         <div class="row" style="margin-top:10px;justify-content:space-between">
           <label class="row" style="gap:6px;font-size:14px"><input type="checkbox" id="wakeLock"> Keep screen awake</label>
           <button class="btn danger" id="deleteRaceBtn">Delete race</button>
         </div>
+      </div>
+
+      <div class="eyebrow" id="fleetsTitle" hidden>Fleets</div>
+      <div class="card" id="fleetsCard" hidden>
+        <div id="fleetsList"></div>
+        <div class="row" style="margin-top:8px">
+          <input type="text" id="fleetNameInp" class="grow" placeholder="Fleet name (e.g. Class A)">
+          <button class="btn" id="addFleetBtn">Add</button>
+        </div>
+        <p class="hint">Rename a fleet by typing in its row. Deleting a fleet moves its boats to the first fleet.</p>
       </div>
 
       <div class="eyebrow">Course marks</div>
@@ -274,6 +289,7 @@
         <div class="orcresults" id="orcResults" hidden></div>
         <div class="row" style="margin-top:8px;justify-content:space-between" id="orcAddRow" hidden>
           <span class="hint" style="margin:0" id="orcMeta"></span>
+          <select id="orcFleet" style="width:auto" hidden title="Fleet to add the boats to"></select>
           <button class="btn primary" id="orcAddBtn" disabled>Add selected</button>
         </div>
         <details style="margin-top:8px"><summary class="hint" style="cursor:pointer;display:list-item">Load from a downloaded ORC .json file instead</summary>
@@ -293,6 +309,7 @@
         <button class="btn quiet" id="skipBtn">Skip</button>
         <button class="btn quiet" id="undoBtn">Undo tap</button>
       </div>
+      <div id="fleetStarts" hidden></div>
       <div id="preStart">
         <div id="preButtons">
           <button id="startBtn">Start race</button>
@@ -331,9 +348,7 @@
     <section class="view" id="view-board">
       <div class="eyebrow" style="margin-top:14px">Corrected-time standings</div>
       <div class="card" style="padding:4px 8px">
-        <div style="overflow-x:auto">
-          <table class="board" id="boardTable"></table>
-        </div>
+        <div style="overflow-x:auto" id="boardWrap"></div>
       </div>
       <div class="row">
         <button class="btn" id="pdfBtnBoard">Download results PDF</button>
@@ -350,6 +365,7 @@
           <span class="lw"><b>Start</b><span class="lm" id="startLogDate"></span></span>
           <button class="iconb" data-editstart="1" title="Edit start time">✎</button>
         </div>
+        <div id="fleetStartRows"></div>
         <div id="logList"></div>
         <div class="empty" id="logEmpty">No roundings logged yet.</div>
       </div>
@@ -375,6 +391,7 @@
     <div class="full"><label class="f" for="bName">Boat name</label><input type="text" id="bName"></div>
     <div><label class="f" for="bSail">Sail no.</label><input type="text" id="bSail"></div>
     <div><label class="f" for="bRating" id="bRatingLbl">Rating</label><input type="number" id="bRating" inputmode="decimal" step="0.0001"></div>
+    <div class="full" id="bFleetWrap" hidden><label class="f" for="bFleet">Fleet</label><select id="bFleet"></select></div>
     <div class="full"><label class="row" style="gap:6px"><input type="checkbox" id="bOwn"> This is my boat</label></div>
   </div>
   <div class="dfoot">
@@ -395,6 +412,7 @@
       <textarea id="bulkText" placeholder="Firefly, GBR 4321, 0.982&#10;Wild Thing, IRL 707, 1.015&#10;Sundance, , 0.941"></textarea>
     </div>
     <div class="full"><input type="file" id="bulkFile" accept=".csv,.txt,text/csv,text/plain"></div>
+    <div class="full" id="bulkFleetWrap" hidden><label class="f" for="bulkFleet">Add these boats to fleet</label><select id="bulkFleet"></select></div>
   </div>
   <p class="hint" id="bulkPreview">Commas, semicolons or tabs all work; the sail number is optional (leave it blank, keep the comma). A header row is ignored. Rating = your handicap figure — ToT factor / TCC, or s/NM for time-on-distance races.</p>
   <div class="dfoot">
@@ -450,7 +468,8 @@ const ORC_CTYPES={INTL:'International',CLUB:'Club',NSIN:'Non Spinnaker Internati
 function newRace(name){
   return { id:uid(), name:name||'New race', created:Date.now(), scoring:'tot',
     marks:[{name:'Mark 1',dist:null},{name:'Mark 2',dist:null},{name:'Finish',dist:null}],
-    boats:[], start:null, seq:null, roundings:[], archived:false, orcField:'TMF_Offshore' };
+    boats:[], start:null, seq:null, roundings:[], archived:false, orcField:'TMF_Offshore',
+    fleetMode:false, fleets:[] };
 }
 let db={races:[],activeId:null};
 function load(){
@@ -479,10 +498,19 @@ function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('sh
 function markLabel(r,idx){ const m=r.marks[idx]; if(!m) return 'Mark '+(idx+1); return idx===r.marks.length-1?(m.name||'Finish'):m.name; }
 function boatRoundings(r,boatId){ return r.roundings.filter(x=>x.boatId===boatId).sort((a,b)=>a.markIdx-b.markIdx); }
 
+/* ---- fleets ---- */
+function fleetsOf(r){ return r.fleetMode&&r.fleets&&r.fleets.length?r.fleets:null; }
+function effFleetId(r,b){ const fs=fleetsOf(r); if(!fs) return null; return fs.some(f=>f.id===b.fleetId)?b.fleetId:fs[0].id; }
+function boatFleet(r,b){ const fs=fleetsOf(r); if(!fs) return null; return fs.find(f=>f.id===effFleetId(r,b)); }
+function startFor(r,b){ const f=boatFleet(r,b); return f?(f.start??null):r.start; }
+function raceStarted(r){ const fs=fleetsOf(r); return fs?fs.some(f=>f.start!=null):r.start!=null; }
+function anyCountdown(r){ const fs=fleetsOf(r); return fs?fs.some(f=>f.start==null&&f.seq):(r.start==null&&!!r.seq); }
+
 /* corrected elapsed for a boat at a given rounding */
 function correctedAt(r,boat,rd){
-  if(r.start==null) return null;
-  const elapsed=rd.t-r.start;
+  const start=startFor(r,boat);
+  if(start==null) return null;
+  const elapsed=rd.t-start;
   if(r.scoring==='tot') return elapsed*(boat.rating||1);
   const dist=r.marks[rd.markIdx]?.dist;
   if(dist==null||!(boat.rating>0)) return {raw:elapsed,noDist:true};
@@ -490,9 +518,10 @@ function correctedAt(r,boat,rd){
 }
 
 /* ================= board math ================= */
-function computeBoard(){
+function computeBoard(fleetId){
   const r=race(); const finIdx=r.marks.length-1;
-  const rows=r.boats.map(b=>{
+  const boats=fleetId==null?r.boats:r.boats.filter(b=>effFleetId(r,b)===fleetId);
+  const rows=boats.map(b=>{
     const rds=boatRoundings(r,b.id);
     const last=rds[rds.length-1]||null;
     const timed=[...rds].reverse().find(x=>!x.skipped)||null;
@@ -538,28 +567,57 @@ function renderSetup(){
       <button class="iconb" data-mup="${i}" title="Move up">↑</button>
       <button class="iconb" data-mdel="${i}" title="Remove">✕</button>
     </div>`).join('')||'<div class="empty">No marks yet.</div>';
-  $('#boatsList').innerHTML=r.boats.map(b=>`
-    <div class="item">
+  const fs=fleetsOf(r);
+  $('#fleetMode').checked=!!r.fleetMode;
+  $('#fleetHint').hidden=!r.fleetMode;
+  $('#fleetsTitle').hidden=!r.fleetMode;
+  $('#fleetsCard').hidden=!r.fleetMode;
+  if(fs){
+    $('#fleetsList').innerHTML=fs.map(f=>{
+      const n=r.boats.filter(b=>effFleetId(r,b)===f.id).length;
+      return `<div class="item">
+        <input type="text" data-fname="${f.id}" value="${esc(f.name)}" style="flex:1;min-width:0">
+        <span class="meta">${n} boat${n===1?'':'s'}${f.start!=null?' · started '+fmtClockTime(f.start):''}</span>
+        <button class="iconb" data-fdel="${f.id}" title="Remove fleet">✕</button>
+      </div>`;
+    }).join('');
+  }
+  $('#boatsList').innerHTML=r.boats.map(b=>{
+    const fl=fs?boatFleet(r,b):null;
+    return `<div class="item">
       <span class="nm">${esc(b.name)} ${b.own?'<span class="ownflag">MY BOAT</span>':''}</span>
-      <span class="meta mono">${esc(b.sail||'')} · ${b.rating!=null?b.rating:'no rating'}</span>
+      <span class="meta mono">${fl?esc(fl.name)+' · ':''}${esc(b.sail||'')} · ${b.rating!=null?b.rating:'no rating'}</span>
       <button class="iconb" data-bedit="${b.id}" title="Edit">✎</button>
-    </div>`).join('')||'<div class="empty">No competitors yet — add boats or import ORC certificates.</div>';
+    </div>`;
+  }).join('')||'<div class="empty">No competitors yet — add boats or import ORC certificates.</div>';
   const fsel=$('#orcField');
   fsel.innerHTML=ORC_FIELDS[r.scoring].map(([v,l])=>`<option value="${v}" ${v===r.orcField?'selected':''}>${esc(l)}</option>`).join('');
+  fillFleetSelect($('#orcFleet'));
+  $('#orcFleet').hidden=!fs;
+}
+function fillFleetSelect(sel,chosen){
+  const fs=fleetsOf(race());
+  if(!sel) return;
+  sel.innerHTML=fs?fs.map(f=>`<option value="${f.id}" ${f.id===chosen?'selected':''}>${esc(f.name)}</option>`).join(''):'';
 }
 
 let tick=null;
+const fmtCountdown=ms=>{ const rem=Math.max(0,Math.ceil(ms/1000)); return '−'+Math.floor(rem/60)+':'+String(rem%60).padStart(2,'0'); };
 function renderRace(){
   const r=race();
-  const started=r.start!=null;
-  const inSeq=!started&&!!r.seq;
-  $('#preStart').hidden=started;
-  $('#preButtons').hidden=inSeq;
-  $('#seqPanel').hidden=!inSeq;
+  const fs=fleetsOf(r);
+  const started=raceStarted(r);
+  const inSeq=anyCountdown(r);
+  $('#fleetStarts').hidden=!fs;
+  if(fs) renderFleetStarts(r,fs);
+  $('#preStart').hidden=!!fs||started;
+  $('#preButtons').hidden=!!fs||inSeq;
+  $('#seqPanel').hidden=!!fs||!inSeq;
   $('#racing').hidden=!started;
   $('#raceEmpty').hidden=r.boats.length>0;
-  $('#clockSub').textContent=started?'Elapsed — started '+fmtClockTime(r.start)
-    :inSeq?'Countdown — gun at '+fmtClockTime(r.seq.gunAt):'Race clock';
+  $('#clockSub').textContent= fs
+    ? (started?'Elapsed — first start '+fmtClockTime(Math.min(...fs.filter(f=>f.start!=null).map(f=>f.start))):inSeq?'Countdown to first gun':'Race clock')
+    : (r.start!=null?'Elapsed — started '+fmtClockTime(r.start):r.seq?'Countdown — gun at '+fmtClockTime(r.seq.gunAt):'Race clock');
   updateClock();
   if(started){
     $('#skipBanner').hidden=!skipMode;
@@ -569,8 +627,10 @@ function renderRace(){
     if(own){
       const rds=boatRoundings(r,own.id); const next=rds.length;
       const fin=next>=r.marks.length;
-      ping.disabled=fin;
+      const ownStart=startFor(r,own);
+      ping.disabled=fin||ownStart==null;
       ping.innerHTML=fin?`${esc(own.name)} finished ✓`
+        :ownStart==null?`${esc(own.name)} — waiting for ${esc(boatFleet(r,own)?.name||'start')}`
         :skipMode?`Skip ${esc(markLabel(r,next))} — ${esc(own.name)}`
         :`Ping — ${esc(own.name)}<small>next: ${esc(markLabel(r,next))}</small>`;
       ping.dataset.boat=own.id; ping.hidden=false;
@@ -578,20 +638,63 @@ function renderRace(){
     $('#fleetGrid').innerHTML=r.boats.filter(b=>!b.own).map(b=>{
       const rds=boatRoundings(r,b.id); const next=rds.length;
       const fin=next>=r.marks.length;
+      const bStart=startFor(r,b);
+      const waiting=bStart==null;
       const last=rds[rds.length-1];
-      const lastTxt=last?`${esc(markLabel(r,last.markIdx))} ${last.skipped?'skipped':fmtDur(last.t-r.start)}`:'';
-      return `<button class="boatbtn ${fin?'done':''} ${skipMode&&!fin?'skipping':''}" data-tap="${b.id}" ${fin?'disabled':''}>
+      const fl=fs?boatFleet(r,b):null;
+      const lastTxt=last?`${esc(markLabel(r,last.markIdx))} ${last.skipped?'skipped':fmtDur(last.t-bStart)}`:'';
+      return `<button class="boatbtn ${fin?'done':''} ${skipMode&&!fin&&!waiting?'skipping':''}" data-tap="${b.id}" ${fin||waiting?'disabled':''}>
         <span class="bn">${esc(b.name)}</span>
-        <span class="bs">${esc(b.sail||'')}${lastTxt?' · '+lastTxt:''}</span>
-        <span class="next">${fin?'Finished ✓':(skipMode?'⤼ skip ':'→ ')+esc(markLabel(r,next))}</span></button>`;
+        <span class="bs">${fl?esc(fl.name)+' · ':''}${esc(b.sail||'')}${lastTxt?' · '+lastTxt:''}</span>
+        <span class="next">${fin?'Finished ✓':waiting?'awaiting start':(skipMode?'⤼ skip ':'→ ')+esc(markLabel(r,next))}</span></button>`;
     }).join('');
   }
   if(tick) clearInterval(tick);
   if(inSeq) tick=setInterval(seqTick,250);
-  else if(started&&!r.archived) tick=setInterval(()=>{updateClock(); if(activeTab==='board') renderBoard();},1000);
+  else if(started&&!r.archived) tick=setInterval(()=>{updateClock(); updFleetTimes(); if(activeTab==='board') renderBoard();},1000);
+}
+function renderFleetStarts(r,fs){
+  $('#fleetStarts').innerHTML=fs.map(f=>{
+    const n=r.boats.filter(b=>effFleetId(r,b)===f.id).length;
+    let status,btns='';
+    if(f.start!=null){
+      status=`<span class="mono" data-ftime="${f.id}" style="font-weight:600">${fmtDur(Date.now()-f.start)}</span>`;
+    }else if(f.seq){
+      status=`<span class="mono" data-ftime="${f.id}" style="font-weight:600;color:var(--accent)">${fmtCountdown(f.seq.gunAt-Date.now())}</span>`;
+      btns=`<button class="btn" data-fsync="4|${f.id}">4:00</button><button class="btn" data-fsync="2|${f.id}">2:00</button><button class="btn" data-fsync="1|${f.id}">1:00</button>
+        <button class="btn primary" data-fgun="${f.id}">Gun</button><button class="btn quiet" data-fcancel="${f.id}" title="Cancel sequence">✕</button>`;
+    }else{
+      status='<span class="lm" style="font-size:12px;color:var(--muted)">not started</span>';
+      btns=`<button class="btn" data-fseq="${f.id}">5-min</button><button class="btn primary" data-fgun="${f.id}">Gun</button>`;
+    }
+    return `<div class="card" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;margin-bottom:8px">
+      <span style="font-weight:700">${esc(f.name)}</span>
+      <span style="font-size:12px;color:var(--muted)">${n} boat${n===1?'':'s'}</span>
+      <span class="grow"></span>${status}
+      ${btns?`<span class="row" style="gap:6px">${btns}</span>`:''}</div>`;
+  }).join('');
+}
+function updFleetTimes(){
+  const r=race(); const fs=fleetsOf(r); if(!fs) return;
+  fs.forEach(f=>{
+    const el=document.querySelector('[data-ftime="'+f.id+'"]'); if(!el) return;
+    if(f.start!=null) el.textContent=fmtDur(Date.now()-f.start);
+    else if(f.seq) el.textContent=fmtCountdown(f.seq.gunAt-Date.now());
+  });
 }
 function seqTick(){
   const r=race();
+  const fs=fleetsOf(r);
+  if(fs){
+    let fired=false;
+    fs.forEach(f=>{ if(f.start==null&&f.seq&&Date.now()>=f.seq.gunAt){ f.start=f.seq.gunAt; f.seq=null; fired=true; toast(f.name+' — START'); } });
+    if(fired){
+      save();
+      if(navigator.vibrate) try{navigator.vibrate([120,80,120,80,320]);}catch(e){}
+      renderRace(); return;
+    }
+    updateClock(); updFleetTimes(); return;
+  }
   if(!r.seq){ renderRace(); return; }
   if(Date.now()>=r.seq.gunAt){ toast('START'); fireGun(r.seq.gunAt); return; }
   updateClock();
@@ -599,21 +702,25 @@ function seqTick(){
 function updateClock(){
   const r=race();
   const el=$('#clockEl');
+  const fs=fleetsOf(r);
+  if(fs){
+    const starts=fs.filter(f=>f.start!=null).map(f=>f.start);
+    if(starts.length){ el.textContent=fmtDur(Date.now()-Math.min(...starts)); el.style.color=''; return; }
+    const guns=fs.filter(f=>f.seq).map(f=>f.seq.gunAt);
+    if(guns.length){ const ms=Math.min(...guns)-Date.now(); el.textContent=fmtCountdown(ms); el.style.color=ms<=60000?'var(--accent)':''; return; }
+    el.textContent='–:––:––'; el.style.color=''; return;
+  }
   if(r.start!=null){ el.textContent=fmtDur(Date.now()-r.start); el.style.color=''; return; }
   if(r.seq){
-    const rem=Math.max(0,Math.ceil((r.seq.gunAt-Date.now())/1000));
-    el.textContent='−'+Math.floor(rem/60)+':'+String(rem%60).padStart(2,'0');
-    el.style.color=rem<=60?'var(--accent)':'';
+    const ms=r.seq.gunAt-Date.now();
+    el.textContent=fmtCountdown(ms);
+    el.style.color=ms<=60000?'var(--accent)':'';
     return;
   }
   el.textContent='–:––:––'; el.style.color='';
 }
 
-function renderBoard(){
-  const r=race();
-  const rows=computeBoard();
-  const anyNoDist=rows.some(x=>x.noDist);
-  if(!r.boats.length){ $('#boardTable').innerHTML=''; $('#boardHint').textContent='Add competitors in Setup.'; return; }
+function boardTableHTML(r,rows){
   let leaderCorr=null,leaderCount=null,leaderMark=null;
   const body=rows.map((x,i)=>{
     if(i===0){leaderCorr=x.corr;leaderCount=x.count;leaderMark=x.timed?x.timed.markIdx:null;}
@@ -630,26 +737,54 @@ function renderBoard(){
       <td class="ct mono">${x.corr!=null?fmtDur(x.corr)+(x.noDist?'*':''):'—'}</td>
       <td class="dt mono">${delta}</td></tr>`;
   }).join('');
-  $('#boardTable').innerHTML=`<thead><tr><th></th><th>Boat</th><th>At</th><th class="ct">Corrected</th><th class="dt">Δ leader</th></tr></thead><tbody>${body}</tbody>`;
+  return `<table class="board"><thead><tr><th></th><th>Boat</th><th>At</th><th class="ct">Corrected</th><th class="dt">Δ leader</th></tr></thead><tbody>${body}</tbody></table>`;
+}
+function renderBoard(){
+  const r=race();
+  const fs=fleetsOf(r);
+  if(!r.boats.length){ $('#boardWrap').innerHTML=''; $('#boardHint').textContent='Add competitors in Setup.'; return; }
+  let anyNoDist=false;
+  if(!fs){
+    const rows=computeBoard();
+    anyNoDist=rows.some(x=>x.noDist);
+    $('#boardWrap').innerHTML=boardTableHTML(r,rows);
+  }else{
+    $('#boardWrap').innerHTML=fs.map(f=>{
+      const rows=computeBoard(f.id);
+      anyNoDist=anyNoDist||rows.some(x=>x.noDist);
+      const sub=f.start!=null?'started '+fmtClockTime(f.start):'not started';
+      return `<div class="eyebrow" style="margin:12px 4px 4px">${esc(f.name)} <span style="text-transform:none;letter-spacing:0;font-weight:400">— ${sub} · ${rows.length} boat${rows.length===1?'':'s'}</span></div>`
+        +(rows.length?boardTableHTML(r,rows):'<div class="empty" style="padding:10px">No boats in this fleet.</div>');
+    }).join('');
+  }
   $('#boardHint').textContent =
     (r.scoring==='tot'?'Corrected = elapsed × factor, at each boat’s latest mark. ':'Corrected = elapsed − rating × cumulative NM. ')+
+    (fs?'Each fleet is scored from its own start. ':'')+
     'Boats are ranked by marks completed, then corrected time. ⤼ = that mark was skipped (no time), so corrected is from the boat’s last timed mark.'+(anyNoDist?' *No distance set for that mark — showing raw elapsed.':'');
 }
 
 function renderLog(){
   const r=race();
-  const has=r.start!=null;
-  $('#startLogRow').hidden=!has;
-  if(has){ $('#startLogTime').textContent=fmtClockTime(r.start); $('#startLogDate').textContent=' · '+new Date(r.start).toLocaleDateString(); }
+  const fs=fleetsOf(r);
+  $('#startLogRow').hidden=!!fs||r.start==null;
+  if(!fs&&r.start!=null){ $('#startLogTime').textContent=fmtClockTime(r.start); $('#startLogDate').textContent=' · '+new Date(r.start).toLocaleDateString(); }
+  $('#fleetStartRows').innerHTML=fs?fs.filter(f=>f.start!=null).map(f=>`
+    <div class="logrow">
+      <span class="lt mono">${fmtClockTime(f.start)}</span>
+      <span class="lw"><b>Start — ${esc(f.name)}</b><span class="lm"> · ${new Date(f.start).toLocaleDateString()}</span></span>
+      <button class="iconb" data-editfleet="${f.id}" title="Edit start time">✎</button>
+    </div>`).join(''):'';
   const items=[...r.roundings].sort((a,b)=>(a.t??Infinity)-(b.t??Infinity));
   $('#logEmpty').hidden=items.length>0;
   $('#logList').innerHTML=items.map(x=>{
     const b=r.boats.find(bb=>bb.id===x.boatId);
+    const bStart=b?startFor(r,b):r.start;
+    const fl=b&&fs?boatFleet(r,b):null;
     const when=x.skipped?'<span class="skiptag">skipped</span>':fmtClockTime(x.t);
-    const el=x.skipped?' (edit to give it a time)':' · +'+fmtDur(x.t-r.start);
+    const el=x.skipped?' (edit to give it a time)':(bStart!=null?' · +'+fmtDur(x.t-bStart):'');
     return `<div class="logrow">
       <span class="lt mono">${when}</span>
-      <span class="lw"><b>${esc(b?b.name:'?')}</b><span class="lm"> — ${esc(markLabel(r,x.markIdx))}${el}</span></span>
+      <span class="lw"><b>${esc(b?b.name:'?')}</b><span class="lm"> — ${esc(markLabel(r,x.markIdx))}${fl?' · '+esc(fl.name):''}${el}</span></span>
       <button class="iconb" data-tedit="${x.id}" title="Edit">✎</button></div>`;
   }).join('');
 }
@@ -663,6 +798,7 @@ $('#newRaceBtn').addEventListener('click',()=>{
   const cur=race();
   if(cur&&cur.boats.length&&confirm('Copy competitors and course from "'+cur.name+'"?')){
     r.boats=cur.boats.map(b=>({...b})); r.marks=cur.marks.map(m=>({...m})); r.scoring=cur.scoring; r.orcField=cur.orcField;
+    r.fleetMode=!!cur.fleetMode; r.fleets=(cur.fleets||[]).map(f=>({id:f.id,name:f.name,start:null,seq:null}));
   }
   db.races.push(r); db.activeId=r.id; save(); renderAll();
 });
@@ -692,6 +828,44 @@ $('#marksList').addEventListener('click',e=>{
     r.marks.splice(i,1); r.roundings=r.roundings.filter(x=>x.markIdx<r.marks.length); save(); renderSetup(); }
 });
 
+/* ---- fleets ---- */
+$('#fleetMode').addEventListener('change',e=>{
+  const r=race();
+  r.fleetMode=e.target.checked;
+  if(r.fleetMode){
+    if(!r.fleets||!r.fleets.length) r.fleets=[{id:uid(),name:'Fleet 1',start:r.start??null,seq:null}];
+    r.boats.forEach(b=>{ if(!r.fleets.some(f=>f.id===b.fleetId)) b.fleetId=r.fleets[0].id; });
+  }else{
+    // fall back to the single-start model: keep times sensible if fleets had started
+    if(r.start==null){
+      const starts=(r.fleets||[]).map(f=>f.start).filter(x=>x!=null);
+      if(starts.length) r.start=Math.min(...starts);
+    }
+  }
+  save(); renderSetup();
+});
+$('#addFleetBtn').addEventListener('click',()=>{
+  const r=race(); if(!r.fleetMode) return;
+  const n=$('#fleetNameInp').value.trim(); if(!n){ toast('Name the fleet first'); return; }
+  r.fleets.push({id:uid(),name:n,start:null,seq:null});
+  $('#fleetNameInp').value=''; save(); renderSetup();
+});
+$('#fleetsList').addEventListener('change',e=>{
+  const t=e.target.closest('[data-fname]'); if(!t) return;
+  const f=race().fleets.find(x=>x.id===t.dataset.fname); if(!f) return;
+  f.name=t.value.trim()||f.name; save(); renderSetup();
+});
+$('#fleetsList').addEventListener('click',e=>{
+  const t=e.target.closest('[data-fdel]'); if(!t) return;
+  const r=race();
+  if(r.fleets.length<=1){ toast('Keep at least one fleet'); return; }
+  const f=r.fleets.find(x=>x.id===t.dataset.fdel);
+  if(!confirm('Remove fleet "'+f.name+'"? Its boats move to the first remaining fleet.')) return;
+  r.fleets=r.fleets.filter(x=>x.id!==f.id);
+  r.boats.forEach(b=>{ if(b.fleetId===f.id) b.fleetId=r.fleets[0].id; });
+  save(); renderSetup();
+});
+
 /* ---- boat dialog ---- */
 let editBoatId=null;
 function openBoatDlg(id){
@@ -703,6 +877,9 @@ function openBoatDlg(id){
   $('#bRatingLbl').textContent=r.scoring==='tot'?'Factor (ToT / TCC)':'Rating (s/NM)';
   $('#bRating').step=r.scoring==='tot'?'0.0001':'0.1';
   $('#bOwn').checked=b?!!b.own:false;
+  const fs=fleetsOf(r);
+  $('#bFleetWrap').hidden=!fs;
+  if(fs) fillFleetSelect($('#bFleet'), b?effFleetId(r,b):fs[0].id);
   $('#bDelete').hidden=!b;
   $('#boatDlg').showModal();
 }
@@ -713,6 +890,7 @@ $('#bSave').addEventListener('click',()=>{
   const r=race(); const name=$('#bName').value.trim(); if(!name){toast('Boat needs a name');return;}
   const rating=parseFloat($('#bRating').value);
   const data={name,sail:$('#bSail').value.trim(),rating:isFinite(rating)?rating:null,own:$('#bOwn').checked};
+  if(fleetsOf(r)) data.fleetId=$('#bFleet').value;
   if(data.own) r.boats.forEach(b=>b.own=false);
   if(editBoatId){ Object.assign(r.boats.find(x=>x.id===editBoatId),data); }
   else r.boats.push({id:uid(),...data});
@@ -773,7 +951,13 @@ function bulkPreviewMsg(){
     ? `${boats.length} boat${boats.length===1?'':'s'} detected`+(noRating?` — ${noRating} without a rating (added anyway, edit later)`:'')+'.'
     : 'No boats detected yet — one boat per line: name, sail no, rating.';
 }
-$('#bulkBtn').addEventListener('click',()=>{ $('#bulkText').value=''; $('#bulkFile').value=''; bulkPreviewMsg(); $('#bulkDlg').showModal(); });
+$('#bulkBtn').addEventListener('click',()=>{
+  $('#bulkText').value=''; $('#bulkFile').value=''; bulkPreviewMsg();
+  const fs=fleetsOf(race());
+  $('#bulkFleetWrap').hidden=!fs;
+  if(fs) fillFleetSelect($('#bulkFleet'),fs[0].id);
+  $('#bulkDlg').showModal();
+});
 $('#bulkText').addEventListener('input',bulkPreviewMsg);
 $('#bulkFile').addEventListener('change',e=>{
   const f=e.target.files[0]; if(!f) return;
@@ -786,9 +970,10 @@ $('#bulkAdd').addEventListener('click',()=>{
   const r=race();
   const {boats}=parseBulk($('#bulkText').value);
   let added=0,dupes=0;
+  const bulkFleet=fleetsOf(r)?$('#bulkFleet').value:null;
   boats.forEach(b=>{
     if(r.boats.some(x=>x.name.toLowerCase()===b.name.toLowerCase()&&(x.sail||'')===(b.sail||''))){ dupes++; return; }
-    r.boats.push({id:uid(),name:b.name,sail:b.sail,rating:b.rating,own:false});
+    r.boats.push({id:uid(),name:b.name,sail:b.sail,rating:b.rating,own:false,...(bulkFleet?{fleetId:bulkFleet}:{})});
     added++;
   });
   save(); $('#bulkDlg').close(); renderSetup();
@@ -885,11 +1070,12 @@ $('#orcResults').addEventListener('change',e=>{
 });
 $('#orcAddBtn').addEventListener('click',()=>{
   const r=race(); const field=r.orcField;
+  const toFleet=fleetsOf(r)?$('#orcFleet').value:null;
   let added=0,noval=0;
   orcSel.forEach(c=>{
     if(inFleet(c)) return;
     if(c[field]==null){ noval++; return; }
-    r.boats.push({id:uid(),name:c.YachtName,sail:c.SailNo||'',rating:c[field],own:false});
+    r.boats.push({id:uid(),name:c.YachtName,sail:c.SailNo||'',rating:c[field],own:false,...(toFleet?{fleetId:toFleet}:{})});
     added++;
   });
   orcSel.clear(); save(); renderSetup(); renderOrcResults();
@@ -926,13 +1112,41 @@ $('#gunNowBtn').addEventListener('click',()=>fireGun(Date.now()));
 $('#seqCancelBtn').addEventListener('click',()=>{
   const r=race(); r.seq=null; save(); renderRace();
 });
+$('#fleetStarts').addEventListener('click',e=>{
+  const r=race(); const fs=fleetsOf(r); if(!fs) return;
+  const pick=attr=>{ const t=e.target.closest('['+attr+']'); return t?t.getAttribute(attr):null; };
+  const seqId=pick('data-fseq'), gunId=pick('data-fgun'), cancelId=pick('data-fcancel'), sync=pick('data-fsync');
+  if(seqId){
+    if(!r.boats.length){ toast('Add competitors in Setup first'); setTab('setup'); return; }
+    const f=fs.find(x=>x.id===seqId); if(!f) return;
+    f.seq={gunAt:Date.now()+5*60000}; save(); renderRace();
+    if($('#wakeLock').checked) requestWake();
+  }else if(gunId){
+    if(!r.boats.length){ toast('Add competitors in Setup first'); setTab('setup'); return; }
+    const f=fs.find(x=>x.id===gunId); if(!f) return;
+    f.start=Date.now(); f.seq=null; save();
+    if(navigator.vibrate) try{navigator.vibrate([120,80,120,80,320]);}catch(err){}
+    renderRace();
+    if($('#wakeLock').checked) requestWake();
+  }else if(sync){
+    const [mins,id]=sync.split('|');
+    const f=fs.find(x=>x.id===id); if(!f||!f.seq) return;
+    f.seq.gunAt=Date.now()+(+mins)*60000; save(); updFleetTimes(); updateClock();
+    toast(f.name+' synced — '+mins+' min to the start');
+  }else if(cancelId){
+    const f=fs.find(x=>x.id===cancelId); if(!f) return;
+    f.seq=null; save(); renderRace();
+  }
+});
 let skipMode=false;
 let lastSkip={id:null,at:0};
 function recordTap(boatId){
-  const r=race(); if(r.start==null) return;
+  const r=race();
+  const b=r.boats.find(x=>x.id===boatId); if(!b) return;
+  const bStart=startFor(r,b);
+  if(bStart==null){ if(fleetsOf(r)&&raceStarted(r)) toast((boatFleet(r,b)?.name||'That fleet')+' has not started yet'); return; }
   const rds=boatRoundings(r,boatId);
   if(rds.length>=r.marks.length) return;
-  const b=r.boats.find(x=>x.id===boatId);
   if(skipMode){
     if(lastSkip.id===boatId&&Date.now()-lastSkip.at<2500){ toast('Double-tap ignored — use Undo if the skip was wrong'); return; }
     lastSkip={id:boatId,at:Date.now()};
@@ -947,7 +1161,7 @@ function recordTap(boatId){
   r.roundings.push({id:uid(),boatId,markIdx:rds.length,t:now});
   save();
   if(navigator.vibrate) try{navigator.vibrate(30);}catch(e){}
-  toast(b.name+' — '+markLabel(r,rds.length)+' @ '+fmtDur(now-r.start));
+  toast(b.name+' — '+markLabel(r,rds.length)+' @ '+fmtDur(now-bStart));
   renderRace();
 }
 $('#skipBtn').addEventListener('click',()=>{ skipMode=!skipMode; renderRace(); });
@@ -956,6 +1170,7 @@ $('#skipAllBtn').addEventListener('click',()=>{
   const r=race();
   let n=0;
   r.boats.forEach(b=>{
+    if(startFor(r,b)==null) return; // fleet not started yet
     const rds=boatRoundings(r,b.id);
     if(rds.length>=r.marks.length) return;
     r.roundings.push({id:uid(),boatId:b.id,markIdx:rds.length,t:null,skipped:true});
@@ -987,49 +1202,65 @@ $('#wakeLock').addEventListener('change',e=>{ if(e.target.checked) requestWake()
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'&&$('#wakeLock').checked) requestWake(); });
 
 /* ================= log events ================= */
-let editTimeId=null; // rounding id, or '__start'
+let editTimeId=null; // rounding id, '__start', or '__fleet:<fleetId>'
+const isStartEdit=id=>id==='__start'||String(id).startsWith('__fleet:');
+function dlgFleet(){ return String(editTimeId).startsWith('__fleet:')?race().fleets.find(f=>f.id===String(editTimeId).slice(8)):null; }
+function dlgStartRef(){ // the start this entry's elapsed is measured from
+  const r=race();
+  if(isStartEdit(editTimeId)) return null;
+  const entry=r.roundings.find(x=>x.id===editTimeId);
+  const b=r.boats.find(x=>x.id===entry?.boatId);
+  return b?startFor(r,b):r.start;
+}
 function dlgTimestamp(){ // current dialog clock time resolved against the edited entry's date
   const r=race(); const v=$('#tInput').value; if(!v) return null;
   const parts=v.split(':').map(Number);
-  const entry=editTimeId==='__start'?null:r.roundings.find(x=>x.id===editTimeId);
-  const base=new Date(editTimeId==='__start'?r.start:(entry?.t??r.start));
+  let baseTs;
+  if(editTimeId==='__start') baseTs=r.start;
+  else if(dlgFleet()) baseTs=dlgFleet().start;
+  else { const entry=r.roundings.find(x=>x.id===editTimeId); baseTs=entry?.t??dlgStartRef(); }
+  const base=new Date(baseTs??Date.now());
   base.setHours(parts[0],parts[1],parts[2]||0,0);
   return base.getTime();
 }
 function syncElapsedFromClock(){
-  const r=race(); const ts=dlgTimestamp();
-  $('#tElapsed').value=(ts!=null&&r.start!=null)?fmtDur(ts-r.start).replace('−','-'):'';
+  const st=dlgStartRef(); const ts=dlgTimestamp();
+  $('#tElapsed').value=(ts!=null&&st!=null)?fmtDur(ts-st).replace('−','-'):'';
 }
 function openTimeDlg(id){
   const r=race(); editTimeId=id;
-  const entry=id==='__start'?null:r.roundings.find(x=>x.id===id);
-  const ts=id==='__start'?r.start:(entry?.t??r.start); // skipped entries prefill with the start time
+  const fleet=dlgFleet();
+  const entry=isStartEdit(id)?null:r.roundings.find(x=>x.id===id);
+  const ts=id==='__start'?r.start:fleet?fleet.start:(entry?.t??dlgStartRef()); // skipped entries prefill with the start time
   if(ts==null) return;
-  $('#timeDlgTitle').textContent=id==='__start'?'Edit start time':(entry?.skipped?'Set time for skipped mark':'Edit rounding time');
+  $('#timeDlgTitle').textContent=id==='__start'?'Edit start time':fleet?'Edit start — '+fleet.name:(entry?.skipped?'Set time for skipped mark':'Edit rounding time');
   const d=new Date(ts);
   $('#tInput').value=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0');
-  $('#tElapsedWrap').hidden=id==='__start';
-  if(id!=='__start') syncElapsedFromClock();
-  $('#tDelete').hidden=id==='__start';
+  $('#tElapsedWrap').hidden=isStartEdit(id);
+  if(!isStartEdit(id)) syncElapsedFromClock();
+  $('#tDelete').hidden=isStartEdit(id);
   $('#timeDlg').showModal();
 }
-$('#tInput').addEventListener('input',()=>{ if(editTimeId!=='__start') syncElapsedFromClock(); });
+$('#tInput').addEventListener('input',()=>{ if(!isStartEdit(editTimeId)) syncElapsedFromClock(); });
 $('#tElapsed').addEventListener('input',()=>{
-  const r=race(); if(r.start==null) return;
+  const st=dlgStartRef(); if(st==null) return;
   const v=$('#tElapsed').value.trim(); if(!v) return;
   const neg=v.startsWith('-')||v.startsWith('−');
   const parts=v.replace(/^[-−]/,'').split(':').map(s=>parseFloat(s));
   if(parts.some(x=>!isFinite(x))) return;
   let secs=0; parts.forEach(x=>{secs=secs*60+x;});
-  const d=new Date(r.start+(neg?-1:1)*secs*1000);
+  const d=new Date(st+(neg?-1:1)*secs*1000);
   $('#tInput').value=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0');
 });
 document.querySelector('[data-editstart]').addEventListener('click',()=>openTimeDlg('__start'));
+$('#fleetStartRows').addEventListener('click',e=>{ const t=e.target.closest('[data-editfleet]'); if(t) openTimeDlg('__fleet:'+t.dataset.editfleet); });
 $('#logList').addEventListener('click',e=>{ const t=e.target.closest('[data-tedit]'); if(t) openTimeDlg(t.dataset.tedit); });
 $('#tCancel').addEventListener('click',()=>$('#timeDlg').close());
 $('#tSave').addEventListener('click',()=>{
   const r=race(); const ts=dlgTimestamp(); if(ts==null) return;
+  const fleet=dlgFleet();
   if(editTimeId==='__start') r.start=ts;
+  else if(fleet) fleet.start=ts;
   else { const entry=r.roundings.find(x=>x.id===editTimeId); entry.t=ts; delete entry.skipped; }
   save(); $('#timeDlg').close(); renderLog();
 });
@@ -1044,18 +1275,25 @@ $('#tDelete').addEventListener('click',()=>{
 
 /* ---- CSV export ---- */
 $('#copyCsvBtn').addEventListener('click',async()=>{
-  const r=race(); const rows=computeBoard();
-  const lines=[['Pos','Boat','Sail','Rating','Marks completed','Last mark','Elapsed','Corrected'].join(',')];
-  rows.forEach((x,i)=>{
-    lines.push([x.last?i+1:'',csv(x.boat.name),csv(x.boat.sail),x.boat.rating??'',x.count,
-      x.last?csv(markLabel(r,x.last.markIdx)+(x.last.skipped?' (skipped)':'')):'',
-      x.timed?fmtDur(x.timed.t-r.start):'', x.corr!=null?fmtDur(x.corr):''].join(','));
+  const r=race();
+  const fs=fleetsOf(r);
+  const lines=[];
+  (fs||[null]).forEach(f=>{
+    if(f) lines.push('Fleet,'+csv(f.name)+',start,'+(f.start!=null?fmtClockTime(f.start):'not started'));
+    lines.push(['Pos','Boat','Sail','Rating','Start','Marks completed','Last mark','Elapsed','Corrected'].join(','));
+    computeBoard(f?f.id:null).forEach((x,i)=>{
+      const st=startFor(r,x.boat);
+      lines.push([x.last?i+1:'',csv(x.boat.name),csv(x.boat.sail),x.boat.rating??'',st!=null?fmtClockTime(st):'',x.count,
+        x.last?csv(markLabel(r,x.last.markIdx)+(x.last.skipped?' (skipped)':'')):'',
+        x.timed&&st!=null?fmtDur(x.timed.t-st):'', x.corr!=null?fmtDur(x.corr):''].join(','));
+    });
+    lines.push('');
   });
-  lines.push('');
-  lines.push('Boat,Mark,Time of day,Elapsed');
+  lines.push('Boat,Fleet,Mark,Time of day,Elapsed');
   [...r.roundings].sort((a,b)=>(a.t??Infinity)-(b.t??Infinity)).forEach(x=>{
     const b=r.boats.find(bb=>bb.id===x.boatId);
-    lines.push([csv(b?.name),csv(markLabel(r,x.markIdx)),x.skipped?'skipped':fmtClockTime(x.t),x.skipped?'':fmtDur(x.t-r.start)].join(','));
+    const st=b?startFor(r,b):null;
+    lines.push([csv(b?.name),csv(b&&fs?boatFleet(r,b)?.name:''),csv(markLabel(r,x.markIdx)),x.skipped?'skipped':fmtClockTime(x.t),(x.skipped||st==null)?'':fmtDur(x.t-st)].join(','));
   });
   try{ await navigator.clipboard.writeText(lines.join('\n')); toast('Results copied to clipboard'); }
   catch(e){ toast('Clipboard blocked — long-press to copy from the log instead'); }
@@ -1074,53 +1312,80 @@ function loadPdfLib(){
   }
   return pdfLibP;
 }
-async function downloadPdf(){
-  const r=race();
-  if(r.start==null||!r.boats.length){ toast('Nothing to export yet — start the race first'); return; }
-  try{ await loadPdfLib(); }catch(e){ toast('PDF module unavailable — open the app once online, then retry'); return; }
-  const doc=new window.jspdf.jsPDF();
+function pdfRows(r,rows){
   const finIdx=r.marks.length-1;
-  const rows=computeBoard();
-  const startTxt=fmtClockTime(r.start);
   let leaderCorr=null,leaderCount=null,leaderMark=null;
-  const body=rows.map((x,i)=>{
+  return rows.map((x,i)=>{
     if(i===0){leaderCorr=x.corr;leaderCount=x.count;leaderMark=x.timed?x.timed.markIdx:null;}
     let delta='';
     if(i>0&&x.corr!=null&&leaderCorr!=null){
       if(x.count!==leaderCount) delta='-'+(leaderCount-x.count)+' mark'+(leaderCount-x.count>1?'s':'');
       else if(x.timed&&x.timed.markIdx===leaderMark) delta='+'+fmtDur(x.corr-leaderCorr).replace('−','-');
     }
+    const st=startFor(r,x.boat);
     const fin=(x.finished&&x.timed&&x.timed.markIdx===finIdx)?x.timed:null;
     return [x.last?String(i+1):'-',
       x.boat.name+(x.boat.sail?'\n'+x.boat.sail:''),
       x.boat.rating!=null?String(x.boat.rating):'-',
-      startTxt,
+      st!=null?fmtClockTime(st):'-',
       fin?fmtClockTime(fin.t):(x.last?'at '+markLabel(r,x.last.markIdx)+(x.last.skipped?' (skipped)':''):'-'),
-      fin?fmtDur(fin.t-r.start):'-',
+      fin&&st!=null?fmtDur(fin.t-st):'-',
       x.corr!=null?fmtDur(x.corr).replace('−','-')+(x.noDist?'*':''):'-',
       delta];
   });
-  doc.setFontSize(17); doc.setTextColor(20,40,58);
-  doc.text(r.name||'Race results',14,17);
-  doc.setFontSize(10); doc.setTextColor(110);
-  doc.text('Results — '+new Date(r.start).toLocaleDateString(undefined,{day:'numeric',month:'long',year:'numeric'})
-    +'  ·  Start '+startTxt
-    +'  ·  '+(r.scoring==='tot'?'Time-on-time: corrected = elapsed × factor':'Time-on-distance: corrected = elapsed - rating × NM'),14,24);
+}
+function pdfTable(doc,y,head,body){
   doc.autoTable({
-    startY:29,
-    head:[['Pos','Boat','Handicap','Start','Finish','Elapsed','Corrected','Delta']],
+    startY:y,
+    head:[head],
     body,
     styles:{fontSize:9,cellPadding:2.2,textColor:[20,40,58]},
     headStyles:{fillColor:[226,78,18],textColor:255,fontStyle:'bold'},
     alternateRowStyles:{fillColor:[247,249,248]},
     columnStyles:{0:{cellWidth:11,fontStyle:'bold'},2:{halign:'right'},3:{halign:'right'},4:{halign:'right'},5:{halign:'right'},6:{halign:'right'},7:{halign:'right'}},
   });
-  let y=doc.lastAutoTable.finalY+6;
+  return doc.lastAutoTable.finalY;
+}
+async function downloadPdf(){
+  const r=race();
+  if(!raceStarted(r)||!r.boats.length){ toast('Nothing to export yet — start the race first'); return; }
+  try{ await loadPdfLib(); }catch(e){ toast('PDF module unavailable — open the app once online, then retry'); return; }
+  const doc=new window.jspdf.jsPDF();
+  const fs=fleetsOf(r);
+  const firstStart=fs?Math.min(...fs.filter(f=>f.start!=null).map(f=>f.start)):r.start;
+  const head=['Pos','Boat','Handicap','Start','Finish','Elapsed','Corrected','Delta'];
+  doc.setFontSize(17); doc.setTextColor(20,40,58);
+  doc.text(r.name||'Race results',14,17);
+  doc.setFontSize(10); doc.setTextColor(110);
+  doc.text('Results — '+new Date(firstStart).toLocaleDateString(undefined,{day:'numeric',month:'long',year:'numeric'})
+    +(fs?'':'  ·  Start '+fmtClockTime(r.start))
+    +'  ·  '+(r.scoring==='tot'?'Time-on-time: corrected = elapsed × factor':'Time-on-distance: corrected = elapsed - rating × NM'),14,24);
+  let anyNoDist=false, y=29;
+  if(!fs){
+    const rows=computeBoard();
+    anyNoDist=rows.some(x=>x.noDist);
+    y=pdfTable(doc,y,head,pdfRows(r,rows));
+  }else{
+    const pageH=doc.internal.pageSize.getHeight();
+    fs.forEach((f,idx)=>{
+      const rows=computeBoard(f.id);
+      if(!rows.length) return;
+      anyNoDist=anyNoDist||rows.some(x=>x.noDist);
+      if(y>pageH-50){ doc.addPage(); y=17; }
+      doc.setFontSize(12); doc.setTextColor(20,40,58);
+      doc.text(f.name+(f.start!=null?'  —  start '+fmtClockTime(f.start):'  —  not started'),14,y+(idx===0?0:6));
+      y=pdfTable(doc,y+(idx===0?3:9),head,pdfRows(r,rows))+8;
+    });
+    y-=8;
+  }
+  y+=6;
   doc.setFontSize(8); doc.setTextColor(130);
-  const notes=['Boats are ranked by marks completed, then corrected time. Delta is to the leader at the same mark.'];
-  if(rows.some(x=>x.noDist)) notes.push('* No distance set for that mark — corrected shows raw elapsed.');
+  const notes=['Boats are ranked by marks completed, then corrected time. Delta is to the leader at the same mark.'+(fs?' Each fleet is scored from its own start.':'')];
+  if(anyNoDist) notes.push('* No distance set for that mark — corrected shows raw elapsed.');
+  const pageH=doc.internal.pageSize.getHeight();
+  if(y>pageH-20){ doc.addPage(); y=17; }
   notes.forEach(n=>{ doc.text(n,14,y); y+=4; });
-  doc.text('Scored with Roundings · generated '+new Date().toLocaleString(),14,doc.internal.pageSize.getHeight()-8);
+  doc.text('Scored with Roundings · generated '+new Date().toLocaleString(),14,pageH-8);
   doc.save((r.name||'race').replace(/[^\w-]+/g,'_')+'_results.pdf');
   toast('PDF saved');
 }
@@ -1130,9 +1395,12 @@ $('#pdfBtnLog').addEventListener('click',downloadPdf);
 /* ================= boot ================= */
 load();
 // a countdown that reached zero while the app was closed: the race started at the gun time
-db.races.forEach(r=>{ if(r.start==null&&r.seq&&Date.now()>=r.seq.gunAt){ r.start=r.seq.gunAt; r.seq=null; } });
+db.races.forEach(r=>{
+  if(r.start==null&&r.seq&&Date.now()>=r.seq.gunAt){ r.start=r.seq.gunAt; r.seq=null; }
+  (r.fleets||[]).forEach(f=>{ if(f.start==null&&f.seq&&Date.now()>=f.seq.gunAt){ f.start=f.seq.gunAt; f.seq=null; } });
+});
 save();
-setTab((race().start!=null||race().seq)&&!race().archived?'race':'setup');
+setTab((raceStarted(race())||anyCountdown(race()))&&!race().archived?'race':'setup');
 </script>
 
 <script>
