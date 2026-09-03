@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Window chrome behind the edge-to-edge web view; matches the app's bg colour token in index.html -->
+    <color name="roundings_bg">#EFF2F1</color>
+    <bool name="roundings_light_bars">true</bool>
+</resources>
