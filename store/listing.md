@@ -44,7 +44,7 @@ FOR THE RACE BRIDGE
 Multi-fleet mode runs rolling starts for several classes from one screen. Each fleet gets its own gun or countdown, elapsed times are measured from each fleet's own start, and results are scored per fleet. One tap per boat, whichever class it is in.
 
 RESULTS YOU CAN HAND OVER
-Export a results sheet as PDF for the noticeboard, or copy the fleet as CSV for a spreadsheet. Fix a mis-timed rounding in the log with either the clock time from your GPS or the elapsed time from the start. Skip mode advances a boat past a mark you missed so the rest of its race still scores.
+Export a results sheet as PDF for the noticeboard, or copy the fleet as CSV for a spreadsheet. Fix a mis-timed rounding in the log with either the clock time from your GPS or the elapsed time from the start. Skip mode advances a boat past a mark you missed so the rest of its race still scores. Retirements, OCS, disqualifications and no-shows get the standard scoring codes and drop to the foot of the results.
 
 WORKS WITHOUT SIGNAL
 Everything runs on the phone. No account, no subscription, no data leaves the device unless you choose to export it.
@@ -59,6 +59,7 @@ FEATURES
 • Multi-fleet rolling starts with per-fleet scoring
 • Editable log with GPS clock time or elapsed time
 • Skip mode for missed roundings
+• Scoring codes: RET, OCS, DSQ, DNC, DNS and DNF, set mid-race or in setup
 • PDF results sheet and CSV export
 • Race archive
 • Fully offline
