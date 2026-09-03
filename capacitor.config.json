@@ -1,0 +1,12 @@
+{
+  "appId": "com.michaelbrown.roundings",
+  "appName": "Roundings",
+  "webDir": "www",
+  "backgroundColor": "#081420",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#081420",
+    "scrollEnabled": true,
+    "allowsLinkPreview": false
+  }
+}
