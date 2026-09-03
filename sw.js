@@ -1,5 +1,6 @@
-const CACHE = 'roundings-v7';
-const PRECACHE = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png',
+const CACHE = 'roundings-v8';
+const PRECACHE = ['vendor/fonts/fonts.css', 'vendor/fonts/IBMPlexMono-400-latin-ext.woff2', 'vendor/fonts/IBMPlexMono-400-latin.woff2', 'vendor/fonts/IBMPlexMono-600-latin-ext.woff2', 'vendor/fonts/IBMPlexMono-600-latin.woff2', 'vendor/fonts/Saira-400-latin-ext.woff2', 'vendor/fonts/Saira-400-latin.woff2', 'vendor/fonts/Saira-500-latin-ext.woff2', 'vendor/fonts/Saira-500-latin.woff2', 'vendor/fonts/Saira-600-latin-ext.woff2', 'vendor/fonts/Saira-600-latin.woff2', 'vendor/fonts/Saira-700-latin-ext.woff2', 'vendor/fonts/Saira-700-latin.woff2', 'vendor/fonts/Saira-800-latin-ext.woff2', 'vendor/fonts/Saira-800-latin.woff2',
+  './', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png',
   'vendor/jspdf.umd.min.js', 'vendor/jspdf.plugin.autotable.min.js'];
 
 self.addEventListener('install', e => {

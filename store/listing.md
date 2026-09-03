@@ -101,3 +101,34 @@ To regenerate after UI changes: `npm run sync`, inject `store/seed.js` into `ios
 - Bundle ID `com.michaelbrown.roundings` becomes permanent once the app record exists in App Store Connect. It is never shown to users; it only needs to be unique. Fine to keep.
 - Set your Apple Developer team under Signing & Capabilities in Xcode.
 - Version 1.0, build 1 (in the Xcode target's General tab). Bump the build number for every upload.
+
+## Google Play listing
+
+Assets in `store/android/`: six phone screenshots (1080 × 2160, within Play's 2:1 limit), `feature-graphic-1024x500.png` (required), and the 512 × 512 icon is `store/app-icon-1024.png` downscaled (Play accepts 512 only; resize before upload or use `assets/icon-only.png` via `sips -z 512 512`).
+
+| Field | Value |
+|---|---|
+| App name (30) | Roundings — Race Timer |
+| Short description (80) | Tap mark roundings, get a live corrected-time leaderboard. ORC built in. |
+| Full description (4000) | Reuse the App Store description above verbatim |
+| Category | Sports |
+| Content rating | Complete the IARC questionnaire; answers are all "no" → Everyone |
+| Data safety | No data collected, no data shared |
+| Privacy policy | https://mikeykbrown-oss.github.io/roundings/privacy.html |
+| Package name | com.michaelbrown.roundings |
+
+### Build and sign
+
+```
+npm run android:bundle
+```
+
+Produces `android/app/build/outputs/bundle/release/app-release.aab`, signed with the upload key in `~/roundings-keys/upload-keystore.jks`. The passwords are in `~/roundings-keys/keystore.properties` (a copy sits gitignored at `android/keystore.properties`). **Back up the `~/roundings-keys` folder somewhere safe.** With Play App Signing (the default when you create the app) Google holds the real signing key, so a lost upload key can be reset via support, but it is a slow process.
+
+Bump `versionCode` in `android/app/build.gradle` for every upload; Play rejects a reused code.
+
+### Play Console facts to know before you start
+
+- One-time USD 25 registration at play.google.com/console, with identity verification.
+- Personal developer accounts created after November 2023 must run a **closed test with at least 12 testers opted in for 14 continuous days** before Google grants production access. Plan for that: recruit club sailors as testers via the closed-testing link.
+- Google reviews the first release; typically a few days.

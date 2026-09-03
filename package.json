@@ -2,14 +2,17 @@
   "name": "roundings",
   "version": "1.0.0",
   "private": true,
-  "description": "Roundings — mark-rounding race timer with live corrected-time leaderboard",
+  "description": "Roundings \u2014 mark-rounding race timer with live corrected-time leaderboard",
   "scripts": {
     "build:www": "sh scripts/build-www.sh",
     "sync": "npm run build:www && cap sync ios",
     "ios": "npm run sync && cap open ios",
-    "assets": "capacitor-assets generate --ios --iconBackgroundColor '#081420' --iconBackgroundColorDark '#081420' --splashBackgroundColor '#081420' --splashBackgroundColorDark '#081420'"
+    "assets": "capacitor-assets generate --ios --iconBackgroundColor '#081420' --iconBackgroundColorDark '#081420' --splashBackgroundColor '#081420' --splashBackgroundColorDark '#081420'",
+    "android:bundle": "npm run build:www && cap sync android && cd android && JAVA_HOME=/opt/homebrew/opt/openjdk@21 ./gradlew bundleRelease",
+    "android": "npm run build:www && cap sync android && cap open android"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.1",
     "@capacitor/cli": "^8.5.1",
     "@capacitor/core": "^8.5.1",
     "@capacitor/ios": "^8.5.1"
