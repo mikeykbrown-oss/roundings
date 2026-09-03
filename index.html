@@ -114,6 +114,17 @@
   .boatbtn.done{opacity:.55}
   .boatbtn.done .next{color:var(--good)}
   .boatbtn.skipping{border:1px dashed var(--accent);background:var(--accent-soft)}
+  .boatbtn.coded{opacity:.6}
+  .boatbtn.coded .next{color:var(--bad)}
+  .boatbtn.coding{border:1px dashed var(--bad);background:var(--bad-soft);opacity:1}
+  #codeBtn.armed{background:var(--bad);color:#fff;border-color:var(--bad)}
+  #codeBanner{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--bad-soft);
+    border:1px dashed var(--bad);border-radius:12px;padding:10px 12px;margin-bottom:10px;font-size:13px}
+  .chipm.code{background:var(--bad-soft);color:var(--bad)}
+  .codegrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:4px 0 12px}
+  .codegrid .btn{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:10px 12px;text-align:left;font-size:15px}
+  .codegrid .btn small{font-weight:400;font-size:11px;color:var(--muted)}
+  .codegrid .btn.primary small{color:inherit;opacity:.85}
   .racefoot{display:flex;gap:8px;margin-top:12px}
   #skipBtn.armed{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
   #skipBanner{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--accent-soft);
@@ -318,6 +329,7 @@
         </div>
         <div class="grow"></div>
         <button class="btn quiet" id="skipBtn">Skip</button>
+        <button class="btn quiet" id="codeBtn">Code</button>
         <button class="btn quiet" id="undoBtn">Undo tap</button>
       </div>
       <div id="fleetStarts" hidden></div>
@@ -345,6 +357,10 @@
           <span class="grow">Skip mode — tapping a boat moves it past its next mark <b>without a time</b>. Use it when a rounding wasn't recorded.</span>
           <button class="btn" id="skipAllBtn">Skip all</button>
           <button class="btn primary" id="skipDoneBtn">Done</button>
+        </div>
+        <div id="codeBanner" hidden>
+          <span class="grow">Scoring code — tap a boat to mark it <b>RET, OCS, DSQ, DNC, DNS or DNF</b>. Coded boats are scored behind every boat still racing.</span>
+          <button class="btn primary" id="codeDoneBtn">Done</button>
         </div>
         <button id="pingBtn"></button>
         <div class="fleetgrid" id="fleetGrid"></div>
@@ -403,6 +419,7 @@
     <div><label class="f" for="bSail">Sail no.</label><input type="text" id="bSail"></div>
     <div><label class="f" for="bRating" id="bRatingLbl">Rating</label><input type="number" id="bRating" inputmode="decimal" step="0.0001"></div>
     <div class="full" id="bFleetWrap" hidden><label class="f" for="bFleet">Fleet</label><select id="bFleet"></select></div>
+    <div class="full"><label class="f" for="bCode">Scoring code</label><select id="bCode"></select></div>
     <div class="full"><label class="row" style="gap:6px"><input type="checkbox" id="bOwn"> This is my boat</label></div>
   </div>
   <div class="dfoot">
@@ -411,6 +428,16 @@
       <button class="btn quiet" id="bCancel">Cancel</button>
       <button class="btn primary" id="bSave">Save</button>
     </span>
+  </div>
+</dialog>
+
+<!-- Scoring code -->
+<dialog id="codeDlg">
+  <h3 id="codeDlgTitle">Scoring code</h3>
+  <div class="codegrid" id="codeGrid"></div>
+  <div class="dfoot">
+    <button class="btn danger" id="codeClear">Clear code</button>
+    <span><button class="btn quiet" id="codeCancel">Cancel</button></span>
   </div>
 </dialog>
 
@@ -475,6 +502,10 @@ const ORC_FIELDS={
        ["TND_Inshore_Low","Triple Number Windward/Leeward Low"],["TND_Inshore_Medium","Triple Number Windward/Leeward Medium"],["TND_Inshore_High","Triple Number Windward/Leeward High"]]
 };
 const ORC_CTYPES={INTL:'International',CLUB:'Club',NSIN:'Non Spinnaker International',NSCL:'Non Spinnaker Club',DHIN:'Double Handed International',DHCL:'Double Handed Club'};
+/* Racing Rules of Sailing scoring abbreviations (Appendix A). A coded boat ranks behind every boat still racing. */
+const CODES=[['DNC','Did not come to the starting area'],['DNS','Did not start'],['OCS','On the course side at the start'],['RET','Retired'],['DNF','Did not finish'],['DSQ','Disqualified']];
+const codeLabel=c=>(CODES.find(x=>x[0]===c)||[c,c])[1];
+const codeRank=c=>{ const i=CODES.findIndex(x=>x[0]===c); return i<0?CODES.length:i; };
 const CERT_FIELDS=[...new Set(Object.values(ORC_FIELDS).flat().map(x=>x[0]))]; // every scoring figure we keep per boat, so the fleet can be re-rated after the race
 
 function newRace(name){
@@ -539,9 +570,11 @@ function computeBoard(fleetId){
     const timed=[...rds].reverse().find(x=>!x.skipped)||null;
     let corr=null,noDist=false;
     if(timed){ const c=correctedAt(r,b,timed); if(c&&typeof c==='object'){corr=c.raw;noDist=true;} else corr=c; }
-    return { boat:b, count:rds.length, last, timed, corr, noDist, finished: last? last.markIdx>=finIdx : false };
+    return { boat:b, code:b.code||null, count:rds.length, last, timed, corr, noDist, finished: last? last.markIdx>=finIdx : false };
   });
   rows.sort((a,b)=>{
+    if(!!a.code!==!!b.code) return a.code?1:-1;
+    if(a.code&&b.code){ const d=codeRank(a.code)-codeRank(b.code); return d||a.boat.name.localeCompare(b.boat.name); }
     if(a.count!==b.count) return b.count-a.count;
     if(a.corr==null&&b.corr==null) return a.boat.name.localeCompare(b.boat.name);
     if(a.corr==null) return 1; if(b.corr==null) return -1;
@@ -554,7 +587,7 @@ function computeBoard(fleetId){
 let activeTab='setup';
 function setTab(t){
   activeTab=t;
-  if(t!=='race') skipMode=false;
+  if(t!=='race'){ skipMode=false; codeMode=false; }
   document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id==='view-'+t));
   document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   renderAll();
@@ -597,7 +630,7 @@ function renderSetup(){
   $('#boatsList').innerHTML=r.boats.map(b=>{
     const fl=fs?boatFleet(r,b):null;
     return `<div class="item">
-      <span class="nm">${esc(b.name)} ${b.own?'<span class="ownflag">MY BOAT</span>':''}</span>
+      <span class="nm">${esc(b.name)} ${b.own?'<span class="ownflag">MY BOAT</span>':''}${b.code?' <span class="chipm code">'+b.code+'</span>':''}</span>
       <span class="meta mono">${fl?esc(fl.name)+' · ':''}${esc(b.sail||'')} · ${b.rating!=null?b.rating:'no rating'}</span>
       <button class="iconb" data-bedit="${b.id}" title="Edit">✎</button>
     </div>`;
@@ -642,14 +675,18 @@ function renderRace(){
   if(started){
     $('#skipBanner').hidden=!skipMode;
     $('#skipBtn').classList.toggle('armed',skipMode);
+    $('#codeBanner').hidden=!codeMode;
+    $('#codeBtn').classList.toggle('armed',codeMode);
     const own=r.boats.find(b=>b.own);
     const ping=$('#pingBtn');
     if(own){
       const rds=boatRoundings(r,own.id); const next=rds.length;
       const fin=next>=r.marks.length;
       const ownStart=startFor(r,own);
-      ping.disabled=fin||ownStart==null;
-      ping.innerHTML=fin?`${esc(own.name)} finished ✓`
+      ping.disabled=codeMode?false:(!!own.code||fin||ownStart==null);
+      ping.innerHTML=codeMode?`Code — ${esc(own.name)}<small>${own.code?own.code+' · tap to change':'tap to set RET, OCS, DSQ…'}</small>`
+        :own.code?`${esc(own.name)} — ${own.code}<small>${esc(codeLabel(own.code))}</small>`
+        :fin?`${esc(own.name)} finished ✓`
         :ownStart==null?`${esc(own.name)} — waiting for ${esc(boatFleet(r,own)?.name||'start')}`
         :skipMode?`Skip ${esc(markLabel(r,next))} — ${esc(own.name)}`
         :`Ping — ${esc(own.name)}<small>next: ${esc(markLabel(r,next))}</small>`;
@@ -663,10 +700,11 @@ function renderRace(){
       const last=rds[rds.length-1];
       const fl=fs?boatFleet(r,b):null;
       const lastTxt=last?`${esc(markLabel(r,last.markIdx))} ${last.skipped?'skipped':fmtDur(last.t-bStart)}`:'';
-      return `<button class="boatbtn ${fin?'done':''} ${skipMode&&!fin&&!waiting?'skipping':''}" data-tap="${b.id}" ${fin||waiting?'disabled':''}>
+      const coded=!!b.code;
+      return `<button class="boatbtn ${fin&&!coded?'done':''} ${coded?'coded':''} ${skipMode&&!fin&&!waiting&&!coded?'skipping':''} ${codeMode?'coding':''}" data-tap="${b.id}" ${!codeMode&&(fin||waiting||coded)?'disabled':''}>
         <span class="bn">${esc(b.name)}</span>
         <span class="bs">${fl?esc(fl.name)+' · ':''}${esc(b.sail||'')}${lastTxt?' · '+lastTxt:''}</span>
-        <span class="next">${fin?'Finished ✓':waiting?'awaiting start':(skipMode?'⤼ skip ':'→ ')+esc(markLabel(r,next))}</span></button>`;
+        <span class="next">${codeMode?'⚑ '+(coded?b.code+' · change':'set code'):coded?b.code+' — '+esc(codeLabel(b.code)):fin?'Finished ✓':waiting?'awaiting start':(skipMode?'⤼ skip ':'→ ')+esc(markLabel(r,next))}</span></button>`;
     }).join('');
   }
   if(tick) clearInterval(tick);
@@ -741,20 +779,20 @@ function updateClock(){
 }
 
 function boardTableHTML(r,rows){
-  let leaderCorr=null,leaderCount=null,leaderMark=null;
+  let leader=null;
   const body=rows.map((x,i)=>{
-    if(i===0){leaderCorr=x.corr;leaderCount=x.count;leaderMark=x.timed?x.timed.markIdx:null;}
+    if(!leader&&!x.code) leader=x;
     let delta='';
-    if(i>0&&x.corr!=null&&leaderCorr!=null){
-      if(x.count!==leaderCount) delta='−'+(leaderCount-x.count)+' mark'+(leaderCount-x.count>1?'s':'');
-      else if(x.timed&&x.timed.markIdx===leaderMark) delta='+'+fmtDur(x.corr-leaderCorr);
+    if(!x.code&&leader&&x!==leader&&x.corr!=null&&leader.corr!=null){
+      if(x.count!==leader.count) delta='−'+(leader.count-x.count)+' mark'+(leader.count-x.count>1?'s':'');
+      else if(x.timed&&leader.timed&&x.timed.markIdx===leader.timed.markIdx) delta='+'+fmtDur(x.corr-leader.corr);
     }
     const mk=x.last? `<span class="chipm ${x.finished?'fin':''}">${(x.finished?'FIN':esc(markLabel(r,x.last.markIdx)))+(x.last.skipped?' ⤼':'')}</span>`:'<span class="chipm">—</span>';
     return `<tr class="${x.boat.own?'own':''}">
-      <td class="pos">${x.last?i+1:''}</td>
+      <td class="pos">${x.last&&!x.code?i+1:''}</td>
       <td class="name"><span class="bname">${esc(x.boat.name)}</span><br><span class="bsail mono">${esc(x.boat.sail||'')}</span></td>
       <td>${mk}</td>
-      <td class="ct mono">${x.corr!=null?fmtDur(x.corr)+(x.noDist?'*':''):'—'}</td>
+      <td class="ct mono">${x.code?'<span class="chipm code" title="'+esc(codeLabel(x.code))+'">'+x.code+'</span>':x.corr!=null?fmtDur(x.corr)+(x.noDist?'*':''):'—'}</td>
       <td class="dt mono">${delta}</td></tr>`;
   }).join('');
   return `<table class="board"><thead><tr><th></th><th>Boat</th><th>At</th><th class="ct">Corrected</th><th class="dt">Δ leader</th></tr></thead><tbody>${body}</tbody></table>`;
@@ -780,7 +818,7 @@ function renderBoard(){
   $('#boardHint').textContent =
     (r.scoring==='tot'?'Corrected = elapsed × factor, at each boat’s latest mark. ':'Corrected = elapsed − rating × cumulative NM. ')+
     (fs?'Each fleet is scored from its own start. ':'')+
-    'Boats are ranked by marks completed, then corrected time. ⤼ = that mark was skipped (no time), so corrected is from the boat’s last timed mark.'+(anyNoDist?' *No distance set for that mark — showing raw elapsed.':'');
+    'Boats are ranked by marks completed, then corrected time. Coded boats (RET, OCS, DSQ, DNC…) are listed last. ⤼ = that mark was skipped (no time), so corrected is from the boat’s last timed mark.'+(anyNoDist?' *No distance set for that mark — showing raw elapsed.':'');
 }
 
 function renderLog(){
@@ -916,6 +954,8 @@ function openBoatDlg(id){
   $('#bRatingLbl').textContent=r.scoring==='tot'?'Factor (ToT / TCC)':'Rating (s/NM)';
   $('#bRating').step=r.scoring==='tot'?'0.0001':'0.1';
   $('#bOwn').checked=b?!!b.own:false;
+  $('#bCode').innerHTML='<option value="">None — racing</option>'+CODES.map(([c,l])=>`<option value="${c}">${c} — ${esc(l)}</option>`).join('');
+  $('#bCode').value=b&&b.code?b.code:'';
   const fs=fleetsOf(r);
   $('#bFleetWrap').hidden=!fs;
   if(fs) fillFleetSelect($('#bFleet'), b?effFleetId(r,b):fs[0].id);
@@ -928,7 +968,7 @@ $('#bCancel').addEventListener('click',()=>$('#boatDlg').close());
 $('#bSave').addEventListener('click',()=>{
   const r=race(); const name=$('#bName').value.trim(); if(!name){toast('Boat needs a name');return;}
   const rating=parseFloat($('#bRating').value);
-  const data={name,sail:$('#bSail').value.trim(),rating:isFinite(rating)?rating:null,own:$('#bOwn').checked};
+  const data={name,sail:$('#bSail').value.trim(),rating:isFinite(rating)?rating:null,own:$('#bOwn').checked,code:$('#bCode').value||null};
   if(fleetsOf(r)) data.fleetId=$('#bFleet').value;
   if(data.own) r.boats.forEach(b=>b.own=false);
   if(editBoatId){ Object.assign(r.boats.find(x=>x.id===editBoatId),data); }
@@ -1179,11 +1219,12 @@ $('#fleetStarts').addEventListener('click',e=>{
     f.seq=null; save(); renderRace();
   }
 });
-let skipMode=false;
+let skipMode=false, codeMode=false, codeBoatId=null;
 let lastSkip={id:null,at:0};
 function recordTap(boatId){
   const r=race();
   const b=r.boats.find(x=>x.id===boatId); if(!b) return;
+  if(b.code){ toast(b.name+' is '+b.code+' — use Code to clear it before logging roundings'); return; }
   const bStart=startFor(r,b);
   if(bStart==null){ if(fleetsOf(r)&&raceStarted(r)) toast((boatFleet(r,b)?.name||'That fleet')+' has not started yet'); return; }
   const rds=boatRoundings(r,boatId);
@@ -1205,13 +1246,32 @@ function recordTap(boatId){
   toast(b.name+' — '+markLabel(r,rds.length)+' @ '+fmtDur(now-bStart));
   renderRace();
 }
-$('#skipBtn').addEventListener('click',()=>{ skipMode=!skipMode; renderRace(); });
+$('#skipBtn').addEventListener('click',()=>{ skipMode=!skipMode; if(skipMode) codeMode=false; renderRace(); });
+$('#codeBtn').addEventListener('click',()=>{ codeMode=!codeMode; if(codeMode) skipMode=false; renderRace(); });
+$('#codeDoneBtn').addEventListener('click',()=>{ codeMode=false; renderRace(); });
+function openCodeDlg(id){
+  const b=race().boats.find(x=>x.id===id); if(!b) return;
+  codeBoatId=id;
+  $('#codeDlgTitle').textContent=b.name+' — scoring code';
+  $('#codeGrid').innerHTML=CODES.map(([c,l])=>`<button class="btn ${b.code===c?'primary':''}" data-code="${c}"><b>${c}</b><small>${esc(l)}</small></button>`).join('');
+  $('#codeClear').hidden=!b.code;
+  $('#codeDlg').showModal();
+}
+function setCode(id,code){
+  const b=race().boats.find(x=>x.id===id); if(!b) return;
+  b.code=code; save(); $('#codeDlg').close();
+  toast(b.name+(code?' — '+code+' ('+codeLabel(code)+')':' — code cleared, racing again'));
+  renderAll();
+}
+$('#codeGrid').addEventListener('click',e=>{ const t=e.target.closest('[data-code]'); if(t) setCode(codeBoatId,t.dataset.code); });
+$('#codeClear').addEventListener('click',()=>setCode(codeBoatId,null));
+$('#codeCancel').addEventListener('click',()=>$('#codeDlg').close());
 $('#skipDoneBtn').addEventListener('click',()=>{ skipMode=false; renderRace(); });
 $('#skipAllBtn').addEventListener('click',()=>{
   const r=race();
   let n=0;
   r.boats.forEach(b=>{
-    if(startFor(r,b)==null) return; // fleet not started yet
+    if(startFor(r,b)==null||b.code) return; // fleet not started yet, or boat is coded
     const rds=boatRoundings(r,b.id);
     if(rds.length>=r.marks.length) return;
     r.roundings.push({id:uid(),boatId:b.id,markIdx:rds.length,t:null,skipped:true});
@@ -1222,8 +1282,8 @@ $('#skipAllBtn').addEventListener('click',()=>{
   toast(n+' boat'+(n===1?'':'s')+' moved past their next mark — Undo reverses one at a time');
   renderRace();
 });
-$('#fleetGrid').addEventListener('click',e=>{ const t=e.target.closest('[data-tap]'); if(t) recordTap(t.dataset.tap); });
-$('#pingBtn').addEventListener('click',e=>{ const id=e.currentTarget.dataset.boat; if(id) recordTap(id); });
+$('#fleetGrid').addEventListener('click',e=>{ const t=e.target.closest('[data-tap]'); if(t) (codeMode?openCodeDlg:recordTap)(t.dataset.tap); });
+$('#pingBtn').addEventListener('click',e=>{ const id=e.currentTarget.dataset.boat; if(id) (codeMode?openCodeDlg:recordTap)(id); });
 $('#undoBtn').addEventListener('click',()=>{
   const r=race();
   if(!r.roundings.length){ toast('Nothing to undo'); return; }
@@ -1321,12 +1381,12 @@ $('#copyCsvBtn').addEventListener('click',async()=>{
   const lines=[];
   (fs||[null]).forEach(f=>{
     if(f) lines.push('Fleet,'+csv(f.name)+',start,'+(f.start!=null?fmtClockTime(f.start):'not started'));
-    lines.push(['Pos','Boat','Sail','Rating','Start','Marks completed','Last mark','Elapsed','Corrected'].join(','));
+    lines.push(['Pos','Boat','Sail','Rating','Start','Marks completed','Last mark','Elapsed','Corrected','Code'].join(','));
     computeBoard(f?f.id:null).forEach((x,i)=>{
       const st=startFor(r,x.boat);
-      lines.push([x.last?i+1:'',csv(x.boat.name),csv(x.boat.sail),x.boat.rating??'',st!=null?fmtClockTime(st):'',x.count,
+      lines.push([x.last&&!x.code?i+1:'',csv(x.boat.name),csv(x.boat.sail),x.boat.rating??'',st!=null?fmtClockTime(st):'',x.count,
         x.last?csv(markLabel(r,x.last.markIdx)+(x.last.skipped?' (skipped)':'')):'',
-        x.timed&&st!=null?fmtDur(x.timed.t-st):'', x.corr!=null?fmtDur(x.corr):''].join(','));
+        x.timed&&st!=null?fmtDur(x.timed.t-st):'', x.code?'':x.corr!=null?fmtDur(x.corr):'', x.code||''].join(','));
     });
     lines.push('');
   });
@@ -1355,23 +1415,23 @@ function loadPdfLib(){
 }
 function pdfRows(r,rows){
   const finIdx=r.marks.length-1;
-  let leaderCorr=null,leaderCount=null,leaderMark=null;
+  let leader=null;
   return rows.map((x,i)=>{
-    if(i===0){leaderCorr=x.corr;leaderCount=x.count;leaderMark=x.timed?x.timed.markIdx:null;}
+    if(!leader&&!x.code) leader=x;
     let delta='';
-    if(i>0&&x.corr!=null&&leaderCorr!=null){
-      if(x.count!==leaderCount) delta='-'+(leaderCount-x.count)+' mark'+(leaderCount-x.count>1?'s':'');
-      else if(x.timed&&x.timed.markIdx===leaderMark) delta='+'+fmtDur(x.corr-leaderCorr).replace('−','-');
+    if(!x.code&&leader&&x!==leader&&x.corr!=null&&leader.corr!=null){
+      if(x.count!==leader.count) delta='-'+(leader.count-x.count)+' mark'+(leader.count-x.count>1?'s':'');
+      else if(x.timed&&leader.timed&&x.timed.markIdx===leader.timed.markIdx) delta='+'+fmtDur(x.corr-leader.corr).replace('−','-');
     }
     const st=startFor(r,x.boat);
     const fin=(x.finished&&x.timed&&x.timed.markIdx===finIdx)?x.timed:null;
-    return [x.last?String(i+1):'-',
+    return [x.last&&!x.code?String(i+1):'-',
       x.boat.name+(x.boat.sail?'\n'+x.boat.sail:''),
       x.boat.rating!=null?String(x.boat.rating):'-',
       st!=null?fmtClockTime(st):'-',
       fin?fmtClockTime(fin.t):(x.last?'at '+markLabel(r,x.last.markIdx)+(x.last.skipped?' (skipped)':''):'-'),
       fin&&st!=null?fmtDur(fin.t-st):'-',
-      x.corr!=null?fmtDur(x.corr).replace('−','-')+(x.noDist?'*':''):'-',
+      x.code?x.code+' ('+codeLabel(x.code)+')':x.corr!=null?fmtDur(x.corr).replace('−','-')+(x.noDist?'*':''):'-',
       delta];
   });
 }
