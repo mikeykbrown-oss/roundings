@@ -2,7 +2,7 @@
   "name": "roundings",
   "version": "1.0.0",
   "private": true,
-  "description": "Roundings \u2014 mark-rounding race timer with live corrected-time leaderboard",
+  "description": "Roundings — mark-rounding race timer with live corrected-time leaderboard",
   "scripts": {
     "build:www": "sh scripts/build-www.sh",
     "sync": "npm run build:www && cap sync ios",
@@ -15,7 +15,9 @@
     "@capacitor/android": "^8.5.1",
     "@capacitor/cli": "^8.5.1",
     "@capacitor/core": "^8.5.1",
-    "@capacitor/ios": "^8.5.1"
+    "@capacitor/filesystem": "^8.1.3",
+    "@capacitor/ios": "^8.5.1",
+    "@capacitor/share": "^8.0.1"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5"

@@ -1487,7 +1487,22 @@ async function downloadPdf(){
   if(y>pageH-20){ doc.addPage(); y=17; }
   notes.forEach(n=>{ doc.text(n,14,y); y+=4; });
   doc.text('Scored with Roundings · generated '+new Date().toLocaleString(),14,pageH-8);
-  doc.save((r.name||'race').replace(/[^\w-]+/g,'_')+'_results.pdf');
+  const fileName=(r.name||'race').replace(/[^\w-]+/g,'_')+'_results.pdf';
+  const cap=window.Capacitor;
+  if(cap&&cap.isNativePlatform&&cap.isNativePlatform()){
+    // WKWebView / Android WebView have no download handler, so doc.save() is a silent no-op
+    // inside the native app: write to the app cache and hand the file to the share sheet instead.
+    try{
+      const {Filesystem,Share}=cap.Plugins;
+      const data=doc.output('datauristring').split(',')[1];
+      const {uri}=await Filesystem.writeFile({path:fileName,data,directory:'CACHE'});
+      await Share.share({title:fileName,files:[uri]});
+    }catch(e){
+      if(!/cancel/i.test(String(e&&e.message||e))) toast('Could not share the PDF');
+    }
+    return;
+  }
+  doc.save(fileName);
   toast('PDF saved');
 }
 $('#pdfBtnBoard').addEventListener('click',downloadPdf);
